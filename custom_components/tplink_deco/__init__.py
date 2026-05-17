@@ -90,22 +90,33 @@ async def async_create_and_refresh_coordinators(
     deco_coordinator = TplinkDecoUpdateCoordinator(
         hass, api, config_entry, update_interval, deco_data
     )
-    if config_entry is None:
-        await deco_coordinator._async_update_data()
-    else:
-        await deco_coordinator.async_config_entry_first_refresh()
+    # Clients coordinator runs with no auto-interval: it is triggered manually
+    # by the deco coordinator after each deco update, so both coordinators share
+    # a single polling cycle (devices → performance → clients) instead of two
+    # independent cycles that double the API load.
     clients_coordinator = TplinkDecoClientUpdateCoordinator(
         hass,
         api,
         config_entry,
         deco_coordinator,
         consider_home_seconds,
-        update_interval,
+        None,  # No auto-polling; triggered by deco_coordinator listener below
         client_data,
     )
+
+    async def _async_trigger_clients_refresh():
+        """Refresh clients coordinator after deco coordinator finishes."""
+        await clients_coordinator.async_refresh()
+
+    deco_coordinator.async_add_listener(
+        lambda: hass.async_create_task(_async_trigger_clients_refresh())
+    )
+
     if config_entry is None:
         await deco_coordinator._async_update_data()
+        await clients_coordinator._async_update_data()
     else:
+        await deco_coordinator.async_config_entry_first_refresh()
         await clients_coordinator.async_config_entry_first_refresh()
 
     return {
