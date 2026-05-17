@@ -27,7 +27,6 @@ from homeassistant.helpers import device_registry
 from homeassistant.helpers import entity_registry
 from homeassistant.helpers import restore_state
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.event import async_track_time_interval
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
@@ -37,7 +36,6 @@ from .const import CONF_CLIENT_POSTFIX
 from .const import CONF_CLIENT_PREFIX
 from .const import CONF_DECO_POSTFIX
 from .const import CONF_DECO_PREFIX
-from .const import CONF_PERFORMANCE_POLLING_ENABLED
 from .const import CONF_TIMEOUT_ERROR_RETRIES
 from .const import CONF_TIMEOUT_SECONDS
 from .const import CONF_VERIFY_SSL
@@ -45,12 +43,9 @@ from .const import COORDINATOR_CLIENTS_KEY
 from .const import COORDINATOR_DECOS_KEY
 from .const import DEFAULT_CONSIDER_HOME
 from .const import DEFAULT_DECO_POSTFIX
-from .const import DEFAULT_PERFORMANCE_INTERVAL_MINUTES
-from .const import DEFAULT_PERFORMANCE_POLLING_ENABLED
 from .const import DEFAULT_SCAN_INTERVAL
 from .const import DEFAULT_TIMEOUT_ERROR_RETRIES
 from .const import DEFAULT_TIMEOUT_SECONDS
-from .const import DEFAULT_TOPOLOGY_INTERVAL_HOURS
 from .const import DEVICE_TYPE_DECO
 from .const import DOMAIN
 from .const import PLATFORMS
@@ -71,7 +66,7 @@ async def async_create_and_refresh_coordinators(
     config_data: dict[str:Any],
     config_entry: ConfigEntry = None,
     consider_home_seconds=1,
-    client_update_interval: timedelta = None,
+    update_interval: timedelta = None,
     deco_data: TpLinkDecoData = None,
     client_data: dict[str:TpLinkDecoClient] = None,
 ):
@@ -92,58 +87,26 @@ async def async_create_and_refresh_coordinators(
         timeout_error_retries,
         timeout_seconds,
     )
-
-    # Topology coordinator: 12-hour interval (device list never changes during
-    # normal operation — nodes don't come and go frequently).
-    topology_interval = timedelta(hours=DEFAULT_TOPOLOGY_INTERVAL_HOURS)
     deco_coordinator = TplinkDecoUpdateCoordinator(
-        hass, api, config_entry, topology_interval, deco_data
+        hass, api, config_entry, update_interval, deco_data
     )
-
-    # Clients coordinator: scan_interval (default 300s), NO auto-interval —
-    # it is triggered manually by a listener on deco_coordinator so that the
-    # full cycle is always: topology (12h) or clients-only (scan_interval).
+    if config_entry is None:
+        await deco_coordinator._async_update_data()
+    else:
+        await deco_coordinator.async_config_entry_first_refresh()
     clients_coordinator = TplinkDecoClientUpdateCoordinator(
         hass,
         api,
         config_entry,
         deco_coordinator,
         consider_home_seconds,
-        None,  # No auto-polling; driven by listener below
+        update_interval,
         client_data,
     )
-
-    # After each deco (topology) coordinator update, trigger a client refresh.
-    # This ensures devices → clients run as ONE sequential cycle.
-    async def _async_trigger_clients_refresh():
-        """Refresh clients coordinator after deco coordinator finishes."""
-        await clients_coordinator.async_refresh()
-
-    deco_coordinator.async_add_listener(
-        lambda: hass.async_create_task(_async_trigger_clients_refresh())
-    )
-
     if config_entry is None:
-        # Config-flow validation path: just do a quick connectivity check
         await deco_coordinator._async_update_data()
-        await clients_coordinator._async_update_data()
     else:
-        await deco_coordinator.async_config_entry_first_refresh()
         await clients_coordinator.async_config_entry_first_refresh()
-
-    # ── Client polling timer ──────────────────────────────────────────────────
-    # The main scan_interval controls ONLY client polling (who is connected).
-    # We set up a separate timer that fires every scan_interval seconds and
-    # requests a client refresh WITHOUT re-fetching topology.
-    if config_entry is not None and client_update_interval is not None:
-        def _schedule_client_refresh(_now=None):
-            hass.async_create_task(clients_coordinator.async_refresh())
-
-        cancel_client_timer = async_track_time_interval(
-            hass, _schedule_client_refresh, client_update_interval
-        )
-        # Store canceller so we can clean it up on unload
-        clients_coordinator._cancel_poll_timer = cancel_client_timer
 
     return {
         COORDINATOR_DECOS_KEY: deco_coordinator,
@@ -158,10 +121,7 @@ async def async_create_config_data(hass: HomeAssistant, config_entry: ConfigEntr
     scan_interval_seconds = config_entry.data.get(
         CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
     )
-    client_update_interval = timedelta(seconds=scan_interval_seconds)
-    performance_polling_enabled = config_entry.data.get(
-        CONF_PERFORMANCE_POLLING_ENABLED, DEFAULT_PERFORMANCE_POLLING_ENABLED
-    )
+    update_interval = timedelta(seconds=scan_interval_seconds)
 
     # Load tracked entities from registry
     existing_entries = entity_registry.async_entries_for_config_entry(
@@ -171,8 +131,8 @@ async def async_create_config_data(hass: HomeAssistant, config_entry: ConfigEntr
     deco_data = TpLinkDecoData()
     client_data = {}
 
-    # Populate client list with existing entries so that we keep track of
-    # disconnected clients since deco list_clients only returns connected ones.
+    # Populate client list with existing entries so that we keep track of disconnected clients
+    # since deco list_clients only returns connected clients.
     last_states = restore_state.async_get(hass).last_states
     for entry in existing_entries:
         if entry.domain != DEVICE_TRACKER_DOMAIN:
@@ -192,36 +152,15 @@ async def async_create_config_data(hass: HomeAssistant, config_entry: ConfigEntr
             client.name = entry.original_name
             client_data[entry.unique_id] = client
 
-    coordinators = await async_create_and_refresh_coordinators(
+    return await async_create_and_refresh_coordinators(
         hass,
         config_entry.data,
         config_entry,
         consider_home_seconds,
-        client_update_interval,
+        update_interval,
         deco_data,
         client_data,
     )
-
-    # ── Optional performance polling timer (10 min) ───────────────────────────
-    if performance_polling_enabled:
-        deco_coordinator = coordinators[COORDINATOR_DECOS_KEY]
-        perf_interval = timedelta(minutes=DEFAULT_PERFORMANCE_INTERVAL_MINUTES)
-
-        async def _async_refresh_performance(_now=None):
-            await deco_coordinator.async_refresh_performance()
-
-        cancel_perf_timer = async_track_time_interval(
-            hass, _async_refresh_performance, perf_interval
-        )
-        deco_coordinator._cancel_perf_timer = cancel_perf_timer
-        _LOGGER.debug(
-            "Performance polling enabled: refreshing every %d minutes",
-            DEFAULT_PERFORMANCE_INTERVAL_MINUTES,
-        )
-    else:
-        _LOGGER.debug("Performance polling disabled (set performance_polling_enabled=true to enable)")
-
-    return coordinators
 
 
 async def async_pause_polling(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
@@ -334,17 +273,9 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     deco_coordinator = data.get(COORDINATOR_DECOS_KEY)
     clients_coordinator = data.get(COORDINATOR_CLIENTS_KEY)
 
-    # Cancel background timers before closing coordinators
     if deco_coordinator is not None:
-        cancel_perf = getattr(deco_coordinator, "_cancel_perf_timer", None)
-        if cancel_perf is not None:
-            cancel_perf()
         await deco_coordinator.async_close()
-
     if clients_coordinator is not None:
-        cancel_poll = getattr(clients_coordinator, "_cancel_poll_timer", None)
-        if cancel_poll is not None:
-            cancel_poll()
         await clients_coordinator.async_close()
 
     unloaded = all(
@@ -398,12 +329,6 @@ async def async_migrate_entry(hass, config_entry: ConfigEntry):
     if config_entry.version == 5:
         config_entry.version = 6
         new[CONF_HOST] = f"http://{new[CONF_HOST]}"
-
-    if config_entry.version == 6:
-        config_entry.version = 7
-        # Performance polling is opt-in; existing installs default to disabled
-        # so there is no change in behaviour after migration.
-        new[CONF_PERFORMANCE_POLLING_ENABLED] = DEFAULT_PERFORMANCE_POLLING_ENABLED
 
     hass.config_entries.async_update_entry(config_entry, data=new)
 

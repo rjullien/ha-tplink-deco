@@ -6,11 +6,10 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import COORDINATOR_DECOS_KEY
-from .const import DEFAULT_SCAN_INTERVAL
 from .const import DOMAIN
 from .device import create_device_info
 
-POLLING_INTERVAL_OPTIONS = ["60", "120", "300", "600"]
+POLLING_INTERVAL_OPTIONS = ["10", "30", "60", "120"]
 
 
 async def async_setup_entry(
@@ -40,7 +39,7 @@ class DecoPollingIntervalSelect(SelectEntity):
     @property
     def current_option(self) -> str:
         """Return current polling interval as string."""
-        value = self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        value = self.config_entry.data.get(CONF_SCAN_INTERVAL, 30)
         return str(value)
 
     @property

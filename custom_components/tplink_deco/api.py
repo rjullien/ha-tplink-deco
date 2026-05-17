@@ -6,7 +6,6 @@ import logging
 import math
 import re
 import secrets
-import time
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -151,10 +150,6 @@ class TplinkDecoApi:
         self._seq = None
         self._stok = None
         self._cookie = None
-        self._last_successful_call: float = 0.0  # epoch seconds of last successful API call
-        # Session proactive re-login threshold: re-login before the session expires
-        # (Deco sessions typically expire after ~5 minutes of inactivity)
-        self._session_idle_threshold: float = 4 * 60  # 4 minutes
 
         if verify_ssl:
             self._ssl_context = None
@@ -337,19 +332,6 @@ class TplinkDecoApi:
     async def async_login_if_needed(self):
         if self._seq is None or self._stok is None or self._cookie is None:
             await self.async_login()
-            return
-        # Proactively re-login if the session has been idle long enough that it
-        # may have expired on the router side (~5 min timeout). This avoids a
-        # cascade of 403 errors + parallel re-login storms when multiple coroutines
-        # discover the expired session at the same time.
-        idle_seconds = time.monotonic() - self._last_successful_call
-        if idle_seconds >= self._session_idle_threshold:
-            _LOGGER.debug(
-                "Session idle for %.0fs (>= threshold %.0fs), proactively re-logging in",
-                idle_seconds,
-                self._session_idle_threshold,
-            )
-            await self.async_login()
 
     async def async_login(self):
         if self._login_future is not None:
@@ -480,9 +462,6 @@ class TplinkDecoApi:
                         )
                         raise UnexpectedApiException(f"{context} error: {error_code}")
 
-                # Record the timestamp of every successful API call so that we
-                # can detect session idle expiry and proactively re-login.
-                self._last_successful_call = time.monotonic()
                 return response_json
         except asyncio.TimeoutError as err:
             _LOGGER.debug(
@@ -603,14 +582,9 @@ class TplinkDecoApi:
                     # Reached max retries
                     raise err
                 timeout_retries += 1
-                # Exponential backoff: 10s, 30s, ... so that we don't hammer a
-                # stressed Deco with immediate retries, which can make things worse.
-                backoff_delay = 10 * (3 ** (timeout_retries - 1))
                 _LOGGER.debug(
-                    "Retry (%d of %d) timeout error (backoff %.0fs): %s",
+                    "Retry (%d of %d) timeout error: %s",
                     timeout_retries,
                     self._timeout_error_retries,
-                    backoff_delay,
                     err,
                 )
-                await asyncio.sleep(backoff_delay)

@@ -22,7 +22,6 @@ from .const import CONF_CLIENT_POSTFIX
 from .const import CONF_CLIENT_PREFIX
 from .const import CONF_DECO_POSTFIX
 from .const import CONF_DECO_PREFIX
-from .const import CONF_PERFORMANCE_POLLING_ENABLED
 from .const import CONF_TIMEOUT_ERROR_RETRIES
 from .const import CONF_TIMEOUT_SECONDS
 from .const import CONF_VERIFY_SSL
@@ -30,7 +29,6 @@ from .const import COORDINATOR_CLIENTS_KEY
 from .const import COORDINATOR_DECOS_KEY
 from .const import DEFAULT_CONSIDER_HOME
 from .const import DEFAULT_DECO_POSTFIX
-from .const import DEFAULT_PERFORMANCE_POLLING_ENABLED
 from .const import DEFAULT_SCAN_INTERVAL
 from .const import DEFAULT_TIMEOUT_ERROR_RETRIES
 from .const import DEFAULT_TIMEOUT_SECONDS
@@ -55,7 +53,7 @@ def _get_schema(data: dict[str:Any]):
     schema = _get_auth_schema(data)
     scan_interval = data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
-    if scan_interval not in [60, 120, 300, 600]:
+    if scan_interval not in [10, 30, 60, 120]:
         scan_interval = DEFAULT_SCAN_INTERVAL
 
     schema.update(
@@ -66,7 +64,7 @@ def _get_schema(data: dict[str:Any]):
             vol.Required(
                 CONF_SCAN_INTERVAL,
                 default=scan_interval,
-            ): vol.In([60, 120, 300, 600]),
+            ): vol.In([10, 30, 60, 120]),
             vol.Required(
                 CONF_CONSIDER_HOME,
                 default=data.get(CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME),
@@ -84,12 +82,6 @@ def _get_schema(data: dict[str:Any]):
             vol.Required(
                 CONF_VERIFY_SSL,
                 default=data.get(CONF_VERIFY_SSL, True),
-            ): bool,
-            vol.Required(
-                CONF_PERFORMANCE_POLLING_ENABLED,
-                default=data.get(
-                    CONF_PERFORMANCE_POLLING_ENABLED, DEFAULT_PERFORMANCE_POLLING_ENABLED
-                ),
             ): bool,
             vol.Optional(
                 CONF_CLIENT_PREFIX,
@@ -124,8 +116,6 @@ def _ensure_user_input_optionals(data: dict[str:Any]) -> None:
     ]:
         if key not in data:
             data[key] = ""
-    if CONF_PERFORMANCE_POLLING_ENABLED not in data:
-        data[CONF_PERFORMANCE_POLLING_ENABLED] = DEFAULT_PERFORMANCE_POLLING_ENABLED
 
 
 async def _async_test_credentials(hass: HomeAssistant, data: dict[str:Any]):
@@ -157,7 +147,7 @@ async def _async_test_credentials(hass: HomeAssistant, data: dict[str:Any]):
 class TplinkDecoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for tplink_deco."""
 
-    VERSION = 7
+    VERSION = 6
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
     reauth_entry: ConfigEntry = None
 
