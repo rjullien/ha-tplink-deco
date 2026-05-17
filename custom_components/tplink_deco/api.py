@@ -603,9 +603,14 @@ class TplinkDecoApi:
                     # Reached max retries
                     raise err
                 timeout_retries += 1
+                # Exponential backoff: 10s, 30s, ... so that we don't hammer a
+                # stressed Deco with immediate retries, which can make things worse.
+                backoff_delay = 10 * (3 ** (timeout_retries - 1))
                 _LOGGER.debug(
-                    "Retry (%d of %d) timeout error: %s",
+                    "Retry (%d of %d) timeout error (backoff %.0fs): %s",
                     timeout_retries,
                     self._timeout_error_retries,
+                    backoff_delay,
                     err,
                 )
+                await asyncio.sleep(backoff_delay)
