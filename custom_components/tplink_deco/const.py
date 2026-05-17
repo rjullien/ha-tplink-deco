@@ -12,7 +12,10 @@ COORDINATOR_DECOS_KEY = "decos"
 
 DEFAULT_CONSIDER_HOME = DEFAULT_CONSIDER_HOME_SPAN.total_seconds()
 DEFAULT_DECO_POSTFIX = "Deco"
-DEFAULT_SCAN_INTERVAL = 30
+DEFAULT_SCAN_INTERVAL = 300  # 5 min — clients only; topology is 12h, performance optional
+DEFAULT_TOPOLOGY_INTERVAL_HOURS = 12
+DEFAULT_PERFORMANCE_INTERVAL_MINUTES = 10
+DEFAULT_PERFORMANCE_POLLING_ENABLED = False
 DEFAULT_TIMEOUT_ERROR_RETRIES = 1
 DEFAULT_TIMEOUT_SECONDS = 30
 
@@ -44,6 +47,7 @@ CONF_DECO_POSTFIX = "deco_postfix"
 CONF_TIMEOUT_ERROR_RETRIES = "timeout_error_retries"
 CONF_TIMEOUT_SECONDS = "timeout_seconds"
 CONF_VERIFY_SSL = "verify_ssl"
+CONF_PERFORMANCE_POLLING_ENABLED = "performance_polling_enabled"
 
 # Signals
 SIGNAL_CLIENT_ADDED = f"{DOMAIN}-client-added"
@@ -54,4 +58,4 @@ SERVICE_REBOOT_DECO = "reboot_deco"
 SERVICE_PAUSE_POLLING = "pause_polling"
 SERVICE_RESUME_POLLING = "resume_polling"
 # Platforms
-PLATFORMS = ["device_tracker", "sensor", "binary_sensor", "switch", "select"]
+PLATFORMS = ["device_tracker", "sensor", "binary_sensor", "switch", "select", "button"]
