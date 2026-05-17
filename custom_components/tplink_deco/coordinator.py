@@ -313,20 +313,29 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         # List clients for all decos if _deco_update_coordinator is not provided
         deco_macs = self._deco_update_coordinator.data.decos.keys()
         utc_point_in_time = dt_util.utcnow()
-        # Send list client requests in parallel for each deco
-
-        deco_client_responses = await asyncio.gather(
-            *[
-                async_call_and_propagate_config_error(
+        # Send list client requests SEQUENTIALLY with pacing to avoid
+        # overwhelming the Deco mesh (parallel requests cause disconnects)
+        deco_client_responses = []
+        for i, deco_mac in enumerate(deco_macs):
+            if i > 0:
+                await asyncio.sleep(5)  # 5s pacing between each deco query
+            try:
+                node_clients = await async_call_and_propagate_config_error(
                     self.api.async_list_clients, deco_mac
                 )
-                for deco_mac in deco_macs
-            ]
-        )
+                deco_client_responses.append(node_clients)
+            except Exception as err:
+                _LOGGER.warning(
+                    "_async_update_data: Failed to get clients for deco %s: %s",
+                    deco_mac, err,
+                )
+                deco_client_responses.append(None)
 
         if len(deco_client_responses) > 0:
             # deco_macs is not subscriptable, must be iterated
             for deco_mac, deco_clients in zip(deco_macs, deco_client_responses):
+                if deco_clients is None:
+                    continue  # Skip failed deco queries
                 for deco_client in deco_clients:
                     client_mac = deco_client["mac"]
                     client = old_clients.get(client_mac)
