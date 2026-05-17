@@ -155,7 +155,12 @@ class TpLinkDecoData:
 
 
 class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching data from the API."""
+    """Class to manage fetching data from the API.
+
+    update_interval controls topology refresh (device list). Performance data
+    is refreshed separately via async_refresh_performance(), called from __init__
+    on a 10-minute async_track_time_interval when enabled.
+    """
 
     def __init__(
         self,
@@ -182,7 +187,7 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
         self.paused = False
 
     async def _async_update_data(self):
-        """Update data via api."""
+        """Update topology (device list) via API — runs every 12 hours."""
         if self.paused:
             _LOGGER.debug("Deco polling is paused")
             return self.data
@@ -191,12 +196,8 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
             self.api.async_list_devices
         )
 
-        performance_data = await async_call_and_propagate_config_error(
-            self.api.async_get_performance
-        )
-
         old_decos = self.data.decos
-        master_deco = None
+        master_deco = self.data.master_deco  # keep existing master until confirmed
         deco_added = False
         decos = {}
         for new_deco in new_decos:
@@ -221,38 +222,60 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
                 old_deco.internet_online = False
                 decos[mac] = old_deco
 
-        # Zet globale performance data op de master Deco
-        result = performance_data.get("result", {})
-        if master_deco is not None:
-            cpu_raw = result.get("cpu_usage")
-            mem_raw = result.get("mem_usage")
-
-            if cpu_raw is not None:
-                cpu_percent = cpu_raw * 100
-                master_deco.cpu_usage_raw = round(cpu_percent, 1)
-
-                if master_deco.cpu_usage is not None:
-                    master_deco.cpu_usage = round(
-                        (master_deco.cpu_usage * 0.7) + (cpu_percent * 0.3), 1
-                    )
-                else:
-                    master_deco.cpu_usage = round(cpu_percent, 1)
-
-            if mem_raw is not None:
-                mem_percent = mem_raw * 100
-                master_deco.mem_usage_raw = round(mem_percent, 1)
-
-                if master_deco.mem_usage is not None:
-                    master_deco.mem_usage = round(
-                        (master_deco.mem_usage * 0.7) + (mem_percent * 0.3), 1
-                    )
-                else:
-                    master_deco.mem_usage = round(mem_percent, 1)
-
         if deco_added:
             async_dispatcher_send(self.hass, SIGNAL_DECO_ADDED)
 
         return TpLinkDecoData(master_deco, decos)
+
+    async def async_refresh_performance(self) -> None:
+        """Fetch performance data (CPU/RAM) and merge into deco objects in-place.
+
+        Called on a separate 10-minute timer (not as part of the main topology
+        update cycle). Updates the master deco object directly so that sensors
+        subscribed to this coordinator see the new values without a full refresh.
+        """
+        if self.paused:
+            _LOGGER.debug("Deco performance polling is paused")
+            return
+
+        try:
+            performance_data = await async_call_and_propagate_config_error(
+                self.api.async_get_performance
+            )
+        except Exception as err:
+            _LOGGER.warning("async_refresh_performance error: %s", err)
+            return
+
+        master_deco = self.data.master_deco
+        if master_deco is None:
+            return
+
+        result = performance_data.get("result", {})
+        cpu_raw = result.get("cpu_usage")
+        mem_raw = result.get("mem_usage")
+
+        if cpu_raw is not None:
+            cpu_percent = cpu_raw * 100
+            master_deco.cpu_usage_raw = round(cpu_percent, 1)
+            if master_deco.cpu_usage is not None:
+                master_deco.cpu_usage = round(
+                    (master_deco.cpu_usage * 0.7) + (cpu_percent * 0.3), 1
+                )
+            else:
+                master_deco.cpu_usage = round(cpu_percent, 1)
+
+        if mem_raw is not None:
+            mem_percent = mem_raw * 100
+            master_deco.mem_usage_raw = round(mem_percent, 1)
+            if master_deco.mem_usage is not None:
+                master_deco.mem_usage = round(
+                    (master_deco.mem_usage * 0.7) + (mem_percent * 0.3), 1
+                )
+            else:
+                master_deco.mem_usage = round(mem_percent, 1)
+
+        # Notify listeners (sensor entities) so they pick up the new values
+        self.async_set_updated_data(self.data)
 
     @callback
     def on_close(self, func: CALLBACK_TYPE) -> None:
