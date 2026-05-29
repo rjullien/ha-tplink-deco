@@ -1,6 +1,5 @@
 """TP-Link Deco Coordinator"""
 
-import asyncio
 from collections.abc import Callable
 from datetime import datetime
 from datetime import timedelta
@@ -313,12 +312,10 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         # List clients for all decos if _deco_update_coordinator is not provided
         deco_macs = self._deco_update_coordinator.data.decos.keys()
         utc_point_in_time = dt_util.utcnow()
-        # Send list client requests SEQUENTIALLY with pacing to avoid
-        # overwhelming the Deco mesh (parallel requests cause disconnects)
+        # Send list client requests sequentially (serialization is now
+        # handled by the API request lock, no need for artificial delays)
         deco_client_responses = []
-        for i, deco_mac in enumerate(deco_macs):
-            if i > 0:
-                await asyncio.sleep(5)  # 5s pacing between each deco query
+        for deco_mac in deco_macs:
             try:
                 node_clients = await async_call_and_propagate_config_error(
                     self.api.async_list_clients, deco_mac
@@ -327,7 +324,8 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
             except Exception as err:
                 _LOGGER.warning(
                     "_async_update_data: Failed to get clients for deco %s: %s",
-                    deco_mac, err,
+                    deco_mac,
+                    err,
                 )
                 deco_client_responses.append(None)
 
