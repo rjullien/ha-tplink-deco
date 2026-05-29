@@ -14,6 +14,7 @@ from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api import TplinkDecoApi
@@ -314,43 +315,49 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         utc_point_in_time = dt_util.utcnow()
         # Send list client requests sequentially (serialization is now
         # handled by the API request lock, no need for artificial delays)
-        deco_client_responses = []
+        failed_deco_macs = set()
+        successful_count = 0
         for deco_mac in deco_macs:
             try:
                 node_clients = await async_call_and_propagate_config_error(
                     self.api.async_list_clients, deco_mac
                 )
-                deco_client_responses.append(node_clients)
-            except Exception as err:
-                _LOGGER.warning(
-                    "_async_update_data: Failed to get clients for deco %s: %s",
-                    deco_mac,
-                    err,
-                )
-                deco_client_responses.append(None)
-
-        if len(deco_client_responses) > 0:
-            # deco_macs is not subscriptable, must be iterated
-            for deco_mac, deco_clients in zip(deco_macs, deco_client_responses):
-                if deco_clients is None:
-                    continue  # Skip failed deco queries
-                for deco_client in deco_clients:
+                successful_count += 1
+                for deco_client in node_clients:
                     client_mac = deco_client["mac"]
                     client = old_clients.get(client_mac)
                     if client is None:
                         client_added = True
                         client = TpLinkDecoClient(client_mac)
                         _LOGGER.debug(
-                            "_async_update_data: Found new client mac=%s", client.mac
+                            "_async_update_data: Found new client mac=%s",
+                            client.mac,
                         )
                     client.update(deco_client, deco_mac, utc_point_in_time)
                     clients[client_mac] = client
+            except ConfigEntryAuthFailed:
+                raise
+            except Exception as err:
+                _LOGGER.warning(
+                    "_async_update_data: Failed to get clients for deco %s: %s",
+                    deco_mac,
+                    err,
+                )
+                failed_deco_macs.add(deco_mac)
+
+        if successful_count == 0 and len(failed_deco_macs) > 0:
+            raise UpdateFailed(
+                f"All {len(failed_deco_macs)} deco nodes failed to respond"
+            )
 
         # Copy over clients no longer online
         for client in old_clients.values():
             mac = client.mac
             if mac not in clients:
                 clients[mac] = client
+                if client.deco_mac in failed_deco_macs:
+                    # Node was unreachable; preserve client state as-is
+                    continue
                 if client.last_activity is None:
                     client.online = False
                 else:
