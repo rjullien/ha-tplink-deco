@@ -550,6 +550,11 @@ class TplinkDecoApi:
 
     async def async_logout(self):
         """Logout from the Deco to release the admin session."""
+        async with self._request_lock:
+            await self._async_logout_inner()
+
+    async def _async_logout_inner(self):
+        """Logout implementation (must be called with lock held)."""
         if self._stok is None or self._cookie is None:
             self.clear_auth()
             return

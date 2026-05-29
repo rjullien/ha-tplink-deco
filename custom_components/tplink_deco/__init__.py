@@ -275,12 +275,12 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
 
     # Logout from the Deco to free the admin session
     if deco_coordinator is not None:
-        await deco_coordinator.api.async_logout()
+        await deco_coordinator.async_shutdown()
+    if clients_coordinator is not None:
+        await clients_coordinator.async_shutdown()
 
     if deco_coordinator is not None:
-        await deco_coordinator.async_close()
-    if clients_coordinator is not None:
-        await clients_coordinator.async_close()
+        await deco_coordinator.api.async_logout()
 
     unloaded = all(
         await asyncio.gather(
