@@ -199,9 +199,7 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
         except ConfigEntryAuthFailed:
             raise
         except Exception as err:
-            _LOGGER.debug(
-                "_async_update_data: Performance data unavailable: %s", err
-            )
+            _LOGGER.debug("_async_update_data: Performance data unavailable: %s", err)
 
         old_decos = self.data.decos
         master_deco = None
