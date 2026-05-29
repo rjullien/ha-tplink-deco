@@ -605,6 +605,12 @@ class TplinkDecoApi:
                     # Reached max relogin retries
                     raise err
                 relogin_retried = True
+                # Now clear auth and re-login for the retry attempt.
+                # We don't clear auth on the first occurrence (in _decrypt_data
+                # or connection error handlers) to avoid churning sessions on
+                # transient errors. But if we reach here, it may be a real
+                # session expiration, so we force a re-login for the 2nd try.
+                self.clear_auth()
                 _LOGGER.debug(
                     "Re-login and retry potential expired auth error: %s",
                     err,
