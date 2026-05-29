@@ -324,7 +324,8 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
             except Exception as err:
                 _LOGGER.warning(
                     "_async_update_data: Failed to get clients for deco %s: %s",
-                    deco_mac, err,
+                    deco_mac,
+                    err,
                 )
                 deco_client_responses.append(None)
 

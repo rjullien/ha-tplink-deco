@@ -198,6 +198,12 @@ class TplinkDecoApi:
 
     # Reboot decos.
     async def async_reboot_decos(self, deco_macs) -> dict:
+        """Reboot specified Deco nodes (serialized through the request lock)."""
+        return await self._async_call_with_retry(
+            self._async_reboot_decos_inner, deco_macs
+        )
+
+    async def _async_reboot_decos_inner(self, deco_macs) -> dict:
         await self.async_login_if_needed()
 
         context = f"Reboot Decos {deco_macs}"
