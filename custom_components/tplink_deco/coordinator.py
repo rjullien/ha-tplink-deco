@@ -14,7 +14,6 @@ from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api import TplinkDecoApi
@@ -89,8 +88,7 @@ class TpLinkDeco:
 
         self.name = data.get("custom_nickname")  # Only set if custom value
         if self.name is None:
-            nickname = data.get("nickname")
-            self.name = snake_case_to_title_space(nickname) if nickname else self.mac
+            self.name = snake_case_to_title_space(data.get("nickname"))
         self.ip_address = filter_invalid_ip(data.get("device_ip"))
         self.online = data.get("group_status") == "connected"
         inet = data.get("inet_status")
@@ -128,7 +126,7 @@ class TpLinkDecoClient:
 
     def update(
         self,
-        data: dict[str, Any],
+        data: dict[str:Any],
         deco_mac: str,
         utc_point_in_time: datetime,
     ) -> None:
@@ -149,7 +147,7 @@ class TpLinkDecoData:
     def __init__(
         self,
         master_deco: TpLinkDeco = None,
-        decos: dict[str, TpLinkDeco] = None,
+        decos: dict[str:TpLinkDeco] = None,
     ) -> None:
         self.master_deco = master_deco
         self.decos = {} if decos is None else decos
@@ -192,15 +190,9 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
             self.api.async_list_devices
         )
 
-        performance_data = {}
-        try:
-            performance_data = await async_call_and_propagate_config_error(
-                self.api.async_get_performance
-            )
-        except ConfigEntryAuthFailed:
-            raise
-        except Exception as err:
-            _LOGGER.debug("_async_update_data: Performance data unavailable: %s", err)
+        performance_data = await async_call_and_propagate_config_error(
+            self.api.async_get_performance
+        )
 
         old_decos = self.data.decos
         master_deco = None
@@ -287,7 +279,7 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         deco_update_coordinator: TplinkDecoUpdateCoordinator,
         consider_home_seconds: int,
         update_interval: timedelta = None,
-        data: dict[str, TpLinkDecoClient] = None,
+        data: dict[str:TpLinkDecoClient] = None,
     ) -> None:
         """Initialize."""
         self.api = api
@@ -312,7 +304,7 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
             return self.data
 
         if len(self._deco_update_coordinator.data.decos) == 0:
-            return self.data if self.data else {}
+            return
 
         old_clients = self.data
         clients = {}
@@ -322,49 +314,43 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         utc_point_in_time = dt_util.utcnow()
         # Send list client requests sequentially (serialization is now
         # handled by the API request lock, no need for artificial delays)
-        failed_deco_macs = set()
-        successful_count = 0
+        deco_client_responses = []
         for deco_mac in deco_macs:
             try:
                 node_clients = await async_call_and_propagate_config_error(
                     self.api.async_list_clients, deco_mac
                 )
-                successful_count += 1
-                for deco_client in node_clients:
-                    client_mac = deco_client["mac"]
-                    client = old_clients.get(client_mac)
-                    if client is None:
-                        client_added = True
-                        client = TpLinkDecoClient(client_mac)
-                        _LOGGER.debug(
-                            "_async_update_data: Found new client mac=%s",
-                            client.mac,
-                        )
-                    client.update(deco_client, deco_mac, utc_point_in_time)
-                    clients[client_mac] = client
-            except ConfigEntryAuthFailed:
-                raise
+                deco_client_responses.append(node_clients)
             except Exception as err:
                 _LOGGER.warning(
                     "_async_update_data: Failed to get clients for deco %s: %s",
                     deco_mac,
                     err,
                 )
-                failed_deco_macs.add(deco_mac)
+                deco_client_responses.append(None)
 
-        if successful_count == 0 and len(failed_deco_macs) > 0:
-            raise UpdateFailed(
-                f"All {len(failed_deco_macs)} deco nodes failed to respond"
-            )
+        if len(deco_client_responses) > 0:
+            # deco_macs is not subscriptable, must be iterated
+            for deco_mac, deco_clients in zip(deco_macs, deco_client_responses):
+                if deco_clients is None:
+                    continue  # Skip failed deco queries
+                for deco_client in deco_clients:
+                    client_mac = deco_client["mac"]
+                    client = old_clients.get(client_mac)
+                    if client is None:
+                        client_added = True
+                        client = TpLinkDecoClient(client_mac)
+                        _LOGGER.debug(
+                            "_async_update_data: Found new client mac=%s", client.mac
+                        )
+                    client.update(deco_client, deco_mac, utc_point_in_time)
+                    clients[client_mac] = client
 
         # Copy over clients no longer online
         for client in old_clients.values():
             mac = client.mac
             if mac not in clients:
                 clients[mac] = client
-                if client.deco_mac in failed_deco_macs:
-                    # Node was unreachable; preserve client state as-is
-                    continue
                 if client.last_activity is None:
                     client.online = False
                 else:

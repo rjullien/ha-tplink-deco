@@ -63,12 +63,12 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 async def async_create_and_refresh_coordinators(
     hass: HomeAssistant,
-    config_data: dict[str, Any],
+    config_data: dict[str:Any],
     config_entry: ConfigEntry = None,
     consider_home_seconds=1,
     update_interval: timedelta = None,
     deco_data: TpLinkDecoData = None,
-    client_data: dict[str, TpLinkDecoClient] = None,
+    client_data: dict[str:TpLinkDecoClient] = None,
 ):
     host = config_data.get(CONF_HOST)
     username = config_data.get(CONF_USERNAME)
@@ -104,7 +104,7 @@ async def async_create_and_refresh_coordinators(
         client_data,
     )
     if config_entry is None:
-        await clients_coordinator._async_update_data()
+        await deco_coordinator._async_update_data()
     else:
         await clients_coordinator.async_config_entry_first_refresh()
 
@@ -197,47 +197,39 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
     data = await async_create_config_data(hass, config_entry)
     hass.data[DOMAIN][config_entry.entry_id] = data
+    deco_coordinator = data[COORDINATOR_DECOS_KEY]
 
-    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+    hass.async_create_task(
+        hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+    )
 
     async def async_reboot_deco(service: ServiceCall) -> None:
         dr = device_registry.async_get(hass=hass)
-        device_ids = cast(list[str], service.data.get(ATTR_DEVICE_ID))
+        device_ids = cast([str], service.data.get(ATTR_DEVICE_ID))
         macs = []
-        target_coordinator = None
         for device_id in device_ids:
             device = dr.async_get(device_id)
             if device is None:
                 raise Exception(f"Device ID {device_id} is not a TP-Link Deco device")
             ids = device.identifiers
-            id = next((i for i in ids if i[0] == DOMAIN), None)
-            if id is None:
+            id = next(iter(ids)) if len(ids) == 1 else None
+            if id[0] != DOMAIN:
                 raise Exception(
                     f"Device ID {device_id} does not have {DOMAIN} MAC identifier"
                 )
             macs.append(id[1])
-            # Resolve coordinator from the config entry that owns this device
-            if target_coordinator is None:
-                for entry_id, entry_data in hass.data.get(DOMAIN, {}).items():
-                    coord = entry_data.get(COORDINATOR_DECOS_KEY)
-                    if coord and id[1] in coord.data.decos:
-                        target_coordinator = coord
-                        break
-        if target_coordinator is None:
-            raise Exception("Could not find coordinator for the target device(s)")
-        await target_coordinator.api.async_reboot_decos(macs)
+        await deco_coordinator.api.async_reboot_decos(macs)
 
-    if not hass.services.has_service(DOMAIN, SERVICE_REBOOT_DECO):
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_REBOOT_DECO,
-            async_reboot_deco,
-            schema=vol.Schema(
-                {
-                    vol.Required(ATTR_DEVICE_ID): vol.All(cv.ensure_list(str), [str]),
-                }
-            ),
-        )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REBOOT_DECO,
+        async_reboot_deco,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_DEVICE_ID): vol.All(cv.ensure_list(str), [str]),
+            }
+        ),
+    )
 
     async def handle_pause_polling(service: ServiceCall) -> None:
         """Handle pause polling service."""
@@ -283,12 +275,12 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
 
     # Logout from the Deco to free the admin session
     if deco_coordinator is not None:
-        await deco_coordinator.async_shutdown()
-    if clients_coordinator is not None:
-        await clients_coordinator.async_shutdown()
+        await deco_coordinator.api.async_logout()
 
     if deco_coordinator is not None:
-        await deco_coordinator.api.async_logout()
+        await deco_coordinator.async_close()
+    if clients_coordinator is not None:
+        await clients_coordinator.async_close()
 
     unloaded = all(
         await asyncio.gather(
