@@ -14,14 +14,12 @@ from homeassistant.const import EntityCategory
 from homeassistant.const import UnitOfDataRate
 from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import COORDINATOR_CLIENTS_KEY
 from .const import COORDINATOR_DECOS_KEY
 from .const import DOMAIN
-from .const import SIGNAL_DECO_ADDED
 from .coordinator import TpLinkDeco
 from .coordinator import TplinkDecoClientUpdateCoordinator
 from .coordinator import TplinkDecoUpdateCoordinator
@@ -133,12 +131,8 @@ async def async_setup_entry(
     coordinator_decos = data[COORDINATOR_DECOS_KEY]
     coordinator_clients = data[COORDINATOR_CLIENTS_KEY]
 
-    master = coordinator_decos.data.master_deco
-    if master is None:
-        _LOGGER.warning(
-            "Master Deco not found; skipping sensor setup until next refresh"
-        )
-        return
+    tracked_decos = set()
+    total_sensors_added = False
 
     def add_sensors_for_deco(
         deco: TpLinkDeco | None,
@@ -194,27 +188,32 @@ async def async_setup_entry(
 
         async_add_entities(entities)
 
-    tracked_decos = set()
-
     @callback
-    def add_untracked_deco_sensors():
-        """Add new tracker entities for decos."""
+    def check_new_decos():
+        """Add sensors for newly discovered decos (and total sensors once)."""
+        nonlocal total_sensors_added
+
+        # The total sensors need the master deco for their unique ids. If the
+        # master is not known yet (e.g. degraded first refresh), do not give
+        # up: this runs again on every coordinator update.
+        if not total_sensors_added and coordinator_decos.data.master_deco is not None:
+            add_sensors_for_deco(None)  # Total sensors
+            total_sensors_added = True
+
         for mac, deco in coordinator_decos.data.decos.items():
             if mac in tracked_decos:
                 continue
 
-            _LOGGER.debug(
-                "add_untracked_deco_sensors: Adding deco sensors for mac=%s", deco.mac
-            )
+            _LOGGER.debug("check_new_decos: Adding deco sensors for mac=%s", deco.mac)
             add_sensors_for_deco(deco)
             tracked_decos.add(mac)
 
-    add_sensors_for_deco(None)  # Total sensors
-    add_untracked_deco_sensors()
+    check_new_decos()
 
-    coordinator_decos.on_close(
-        async_dispatcher_connect(hass, SIGNAL_DECO_ADDED, add_untracked_deco_sensors)
-    )
+    # Use a coordinator listener instead of the SIGNAL_DECO_ADDED dispatcher:
+    # it fires after the new data is committed and also covers decos restored
+    # from the entity registry (which never emit the "added" signal).
+    coordinator_decos.on_close(coordinator_decos.async_add_listener(check_new_decos))
 
 
 class TplinkTotalClientDataRateSensor(CoordinatorEntity, SensorEntity):
@@ -246,11 +245,6 @@ class TplinkTotalClientDataRateSensor(CoordinatorEntity, SensorEntity):
         """Return device info."""
         master_deco = self._coordinator_decos.data.master_deco
         return create_device_info(self._deco or master_deco, master_deco)
-
-    @callback
-    async def async_on_demand_update(self):
-        """Request update from coordinator."""
-        await self.coordinator.async_request_refresh()
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -287,9 +281,9 @@ class TplinkDecoClientCountSensor(CoordinatorEntity, SensorEntity):
         self._update_state()
 
     @property
-    def _deco(self) -> TpLinkDeco:
+    def _deco(self) -> TpLinkDeco | None:
         """Return current deco object."""
-        return self._coordinator_decos.data.decos[self._deco_mac]
+        return self._coordinator_decos.data.decos.get(self._deco_mac)
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -330,9 +324,9 @@ class TplinkDecoDiagnosticSensor(CoordinatorEntity, SensorEntity):
         self._attr_has_entity_name = True
 
     @property
-    def _deco(self) -> TpLinkDeco:
+    def _deco(self) -> TpLinkDeco | None:
         """Return current deco object."""
-        return self.coordinator.data.decos[self._deco_mac]
+        return self.coordinator.data.decos.get(self._deco_mac)
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -341,7 +335,10 @@ class TplinkDecoDiagnosticSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
-        value = self.entity_description.value_fn(self._deco)
+        deco = self._deco
+        if deco is None:
+            return None
+        value = self.entity_description.value_fn(deco)
         if value is None or value == "" or value == []:
             return None
         return value

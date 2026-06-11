@@ -26,8 +26,9 @@ from .exceptions import LoginInvalidException
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-def bytes_to_bits(bytes_count):
-    return bytes_count / 8 if bytes_count is not None else bytes_count
+def kilobits_to_kilobytes(kilobits_count):
+    """Convert kilobits to kilobytes (the Deco API reports speeds in kbit/s)."""
+    return kilobits_count / 8 if kilobits_count is not None else kilobits_count
 
 
 def filter_invalid_ip(ip_address):
@@ -88,7 +89,9 @@ class TpLinkDeco:
 
         self.name = data.get("custom_nickname")  # Only set if custom value
         if self.name is None:
-            self.name = snake_case_to_title_space(data.get("nickname"))
+            nickname = data.get("nickname")
+            if nickname:
+                self.name = snake_case_to_title_space(nickname)
         self.ip_address = filter_invalid_ip(data.get("device_ip"))
         self.online = data.get("group_status") == "connected"
         inet = data.get("inet_status")
@@ -126,18 +129,20 @@ class TpLinkDecoClient:
 
     def update(
         self,
-        data: dict[str:Any],
+        data: dict[str, Any],
         deco_mac: str,
         utc_point_in_time: datetime,
     ) -> None:
         self.deco_mac = deco_mac
         self.name = data.get("name")
         self.ip_address = filter_invalid_ip(data.get("ip"))
-        self.online = data.get("online")
+        # client_list only returns connected clients, so a listed client is
+        # online even if the firmware omits the "online" field.
+        self.online = bool(data.get("online", True))
         self.connection_type = data.get("connection_type")
         self.interface = data.get("interface")
-        self.down_kilobytes_per_s = bytes_to_bits(data.get("down_speed", 0))
-        self.up_kilobytes_per_s = bytes_to_bits(data.get("up_speed", 0))
+        self.down_kilobytes_per_s = kilobits_to_kilobytes(data.get("down_speed", 0))
+        self.up_kilobytes_per_s = kilobits_to_kilobytes(data.get("up_speed", 0))
         self.last_activity = utc_point_in_time
 
 
@@ -147,7 +152,7 @@ class TpLinkDecoData:
     def __init__(
         self,
         master_deco: TpLinkDeco = None,
-        decos: dict[str:TpLinkDeco] = None,
+        decos: dict[str, TpLinkDeco] = None,
     ) -> None:
         self.master_deco = master_deco
         self.decos = {} if decos is None else decos
@@ -249,7 +254,14 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
                     master_deco.mem_usage = round(mem_percent, 1)
 
         if deco_added:
-            async_dispatcher_send(self.hass, SIGNAL_DECO_ADDED)
+            # Defer the dispatch until after the coordinator has committed
+            # the new data. async_dispatcher_send runs @callback listeners
+            # synchronously, so dispatching here would make them iterate the
+            # *old* coordinator data, and the new deco would never get its
+            # entities (the signal only fires once per discovery).
+            self.hass.loop.call_soon(
+                async_dispatcher_send, self.hass, SIGNAL_DECO_ADDED
+            )
 
         return TpLinkDecoData(master_deco, decos)
 
@@ -279,7 +291,7 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         deco_update_coordinator: TplinkDecoUpdateCoordinator,
         consider_home_seconds: int,
         update_interval: timedelta = None,
-        data: dict[str:TpLinkDecoClient] = None,
+        data: dict[str, TpLinkDecoClient] = None,
     ) -> None:
         """Initialize."""
         self.api = api
@@ -300,11 +312,14 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Update data via api."""
         if self._deco_update_coordinator.paused:
-            _LOGGER.debug("Deo client polling is paused")
+            _LOGGER.debug("Deco client polling is paused")
             return self.data
 
         if len(self._deco_update_coordinator.data.decos) == 0:
-            return
+            # Return the existing data instead of None: returning None would
+            # replace self.data and crash the next cycle and every sensor
+            # that iterates self.coordinator.data.values().
+            return self.data
 
         old_clients = self.data
         clients = {}
@@ -359,7 +374,10 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
                     ).total_seconds() < self._consider_home_seconds
 
         if client_added:
-            async_dispatcher_send(self.hass, SIGNAL_CLIENT_ADDED)
+            # See TplinkDecoUpdateCoordinator: defer until data is committed.
+            self.hass.loop.call_soon(
+                async_dispatcher_send, self.hass, SIGNAL_CLIENT_ADDED
+            )
 
         return clients
 

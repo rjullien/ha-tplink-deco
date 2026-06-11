@@ -5,7 +5,6 @@ For more details about this integration, please refer to
 https://github.com/amosyuen/ha-tplink-deco
 """
 
-import asyncio
 from datetime import timedelta
 import logging
 from typing import Any
@@ -23,6 +22,7 @@ from homeassistant.const import CONF_PASSWORD
 from homeassistant.const import CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.core import ServiceCall
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry
 from homeassistant.helpers import entity_registry
 from homeassistant.helpers import restore_state
@@ -63,37 +63,18 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 async def async_create_and_refresh_coordinators(
     hass: HomeAssistant,
-    config_data: dict[str:Any],
-    config_entry: ConfigEntry = None,
+    config_data: dict[str, Any],
+    config_entry: ConfigEntry,
     consider_home_seconds=1,
     update_interval: timedelta = None,
     deco_data: TpLinkDecoData = None,
-    client_data: dict[str:TpLinkDecoClient] = None,
+    client_data: dict[str, TpLinkDecoClient] = None,
 ):
-    host = config_data.get(CONF_HOST)
-    username = config_data.get(CONF_USERNAME)
-    password = config_data.get(CONF_PASSWORD)
-    timeout_error_retries = config_data.get(CONF_TIMEOUT_ERROR_RETRIES)
-    timeout_seconds = config_data.get(CONF_TIMEOUT_SECONDS)
-    verify_ssl = config_data.get(CONF_VERIFY_SSL)
-    session = async_get_clientsession(hass)
-
-    api = TplinkDecoApi(
-        session,
-        host,
-        username,
-        password,
-        verify_ssl,
-        timeout_error_retries,
-        timeout_seconds,
-    )
+    api = create_api(hass, config_data)
     deco_coordinator = TplinkDecoUpdateCoordinator(
         hass, api, config_entry, update_interval, deco_data
     )
-    if config_entry is None:
-        await deco_coordinator._async_update_data()
-    else:
-        await deco_coordinator.async_config_entry_first_refresh()
+    await deco_coordinator.async_config_entry_first_refresh()
     clients_coordinator = TplinkDecoClientUpdateCoordinator(
         hass,
         api,
@@ -103,15 +84,25 @@ async def async_create_and_refresh_coordinators(
         update_interval,
         client_data,
     )
-    if config_entry is None:
-        await deco_coordinator._async_update_data()
-    else:
-        await clients_coordinator.async_config_entry_first_refresh()
+    await clients_coordinator.async_config_entry_first_refresh()
 
     return {
         COORDINATOR_DECOS_KEY: deco_coordinator,
         COORDINATOR_CLIENTS_KEY: clients_coordinator,
     }
+
+
+def create_api(hass: HomeAssistant, config_data: dict[str, Any]) -> TplinkDecoApi:
+    """Create a TplinkDecoApi from config data."""
+    return TplinkDecoApi(
+        async_get_clientsession(hass),
+        config_data.get(CONF_HOST),
+        config_data.get(CONF_USERNAME),
+        config_data.get(CONF_PASSWORD),
+        config_data.get(CONF_VERIFY_SSL),
+        config_data.get(CONF_TIMEOUT_ERROR_RETRIES),
+        config_data.get(CONF_TIMEOUT_SECONDS),
+    )
 
 
 async def async_create_config_data(hass: HomeAssistant, config_entry: ConfigEntry):
@@ -163,31 +154,6 @@ async def async_create_config_data(hass: HomeAssistant, config_entry: ConfigEntr
     )
 
 
-async def async_pause_polling(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
-    """Pause Deco polling."""
-    coordinator_decos = hass.data[DOMAIN][config_entry.entry_id][COORDINATOR_DECOS_KEY]
-
-    if coordinator_decos.paused:
-        _LOGGER.info("TP-Link Deco polling is already paused")
-        return
-
-    coordinator_decos.paused = True
-    _LOGGER.info("TP-Link Deco polling paused")
-
-
-async def async_resume_polling(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
-    """Resume Deco polling."""
-    coordinator_decos = hass.data[DOMAIN][config_entry.entry_id][COORDINATOR_DECOS_KEY]
-
-    if not coordinator_decos.paused:
-        _LOGGER.info("TP-Link Deco polling is already running")
-        return
-
-    coordinator_decos.paused = False
-    _LOGGER.info("TP-Link Deco polling resumed")
-    await coordinator_decos.async_request_refresh()
-
-
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     """Set up this integration using UI."""
     _LOGGER.debug("async_setup_entry: Config entry %s", config_entry.entry_id)
@@ -197,28 +163,80 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
     data = await async_create_config_data(hass, config_entry)
     hass.data[DOMAIN][config_entry.entry_id] = data
-    deco_coordinator = data[COORDINATOR_DECOS_KEY]
 
-    hass.async_create_task(
-        hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
-    )
+    # Must be awaited (not wrapped in a task): otherwise unload can race
+    # platform setup, and modern Home Assistant requires setup to be complete
+    # before async_setup_entry returns.
+    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+
+    _async_register_services(hass)
+
+    config_entry.async_on_unload(config_entry.add_update_listener(update_listener))
+
+    return True
+
+
+def _async_register_services(hass: HomeAssistant) -> None:
+    """Register integration services once for all config entries."""
+    if hass.services.has_service(DOMAIN, SERVICE_REBOOT_DECO):
+        return
+
+    def _iter_deco_coordinators():
+        for entry_data in hass.data.get(DOMAIN, {}).values():
+            coordinator = entry_data.get(COORDINATOR_DECOS_KEY)
+            if coordinator is not None:
+                yield coordinator
 
     async def async_reboot_deco(service: ServiceCall) -> None:
         dr = device_registry.async_get(hass=hass)
-        device_ids = cast([str], service.data.get(ATTR_DEVICE_ID))
+        device_ids = cast(list[str], service.data.get(ATTR_DEVICE_ID))
         macs = []
         for device_id in device_ids:
             device = dr.async_get(device_id)
             if device is None:
-                raise Exception(f"Device ID {device_id} is not a TP-Link Deco device")
-            ids = device.identifiers
-            id = next(iter(ids)) if len(ids) == 1 else None
-            if id[0] != DOMAIN:
-                raise Exception(
-                    f"Device ID {device_id} does not have {DOMAIN} MAC identifier"
+                raise HomeAssistantError(
+                    f"Device ID {device_id} is not a TP-Link Deco device"
                 )
-            macs.append(id[1])
-        await deco_coordinator.api.async_reboot_decos(macs)
+            mac = next(
+                (
+                    identifier[1]
+                    for identifier in device.identifiers
+                    if identifier[0] == DOMAIN
+                ),
+                None,
+            )
+            if mac is None:
+                raise HomeAssistantError(
+                    f"Device ID {device_id} does not have a {DOMAIN} MAC identifier"
+                )
+            macs.append(mac)
+
+        # Route each MAC to the config entry that owns it (multi-entry safe).
+        remaining = set(macs)
+        for coordinator in _iter_deco_coordinators():
+            entry_macs = [mac for mac in remaining if mac in coordinator.data.decos]
+            if entry_macs:
+                await coordinator.api.async_reboot_decos(entry_macs)
+                remaining.difference_update(entry_macs)
+        if remaining:
+            raise HomeAssistantError(
+                f"No loaded TP-Link Deco entry owns these devices: {sorted(remaining)}"
+            )
+
+    async def handle_pause_polling(service: ServiceCall) -> None:
+        """Handle pause polling service."""
+        for coordinator in _iter_deco_coordinators():
+            if not coordinator.paused:
+                coordinator.paused = True
+                _LOGGER.info("TP-Link Deco polling paused")
+
+    async def handle_resume_polling(service: ServiceCall) -> None:
+        """Handle resume polling service."""
+        for coordinator in _iter_deco_coordinators():
+            if coordinator.paused:
+                coordinator.paused = False
+                _LOGGER.info("TP-Link Deco polling resumed")
+                await coordinator.async_request_refresh()
 
     hass.services.async_register(
         DOMAIN,
@@ -230,30 +248,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
             }
         ),
     )
-
-    async def handle_pause_polling(service: ServiceCall) -> None:
-        """Handle pause polling service."""
-        await async_pause_polling(hass, config_entry)
-
-    async def handle_resume_polling(service: ServiceCall) -> None:
-        """Handle resume polling service."""
-        await async_resume_polling(hass, config_entry)
-
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_PAUSE_POLLING,
-        handle_pause_polling,
-    )
-
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_RESUME_POLLING,
-        handle_resume_polling,
-    )
-
-    config_entry.async_on_unload(config_entry.add_update_listener(update_listener))
-
-    return True
+    hass.services.async_register(DOMAIN, SERVICE_PAUSE_POLLING, handle_pause_polling)
+    hass.services.async_register(DOMAIN, SERVICE_RESUME_POLLING, handle_resume_polling)
 
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
@@ -270,31 +266,29 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
         )
         return True
 
-    deco_coordinator = data.get(COORDINATOR_DECOS_KEY)
-    clients_coordinator = data.get(COORDINATOR_CLIENTS_KEY)
-
-    # Logout from the Deco to free the admin session
-    if deco_coordinator is not None:
-        await deco_coordinator.api.async_logout()
-
-    if deco_coordinator is not None:
-        await deco_coordinator.async_close()
-    if clients_coordinator is not None:
-        await clients_coordinator.async_close()
-
-    unloaded = all(
-        await asyncio.gather(
-            *[
-                hass.config_entries.async_forward_entry_unload(config_entry, platform)
-                for platform in PLATFORMS
-            ]
-        )
-    )
+    # Unload the platforms first so no entity can trigger a refresh (and a
+    # re-login) while/after we log out of the Deco.
+    unloaded = await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
 
     if unloaded:
+        deco_coordinator = data.get(COORDINATOR_DECOS_KEY)
+        clients_coordinator = data.get(COORDINATOR_CLIENTS_KEY)
+
+        if deco_coordinator is not None:
+            await deco_coordinator.async_close()
+        if clients_coordinator is not None:
+            await clients_coordinator.async_close()
+
+        # Logout from the Deco to free the admin session
+        if deco_coordinator is not None:
+            await deco_coordinator.api.async_logout()
+
         hass.data[DOMAIN].pop(config_entry.entry_id, None)
-        hass.services.async_remove(DOMAIN, SERVICE_PAUSE_POLLING)
-        hass.services.async_remove(DOMAIN, SERVICE_RESUME_POLLING)
+        if not hass.data[DOMAIN]:
+            # Only remove the services when the last entry is unloaded.
+            hass.services.async_remove(DOMAIN, SERVICE_REBOOT_DECO)
+            hass.services.async_remove(DOMAIN, SERVICE_PAUSE_POLLING)
+            hass.services.async_remove(DOMAIN, SERVICE_RESUME_POLLING)
 
     return unloaded
 
@@ -309,33 +303,36 @@ async def async_migrate_entry(hass, config_entry: ConfigEntry):
     """Migrate old entry."""
     _LOGGER.debug("Migrating from version %s", config_entry.version)
 
+    version = config_entry.version
     new = {**config_entry.data}
 
-    if config_entry.version == 1:
-        config_entry.version = 2
+    if version == 1:
         new[CONF_VERIFY_SSL] = True
+        version = 2
 
-    if config_entry.version == 2:
-        config_entry.version = 3
+    if version == 2:
         new[CONF_TIMEOUT_ERROR_RETRIES] = DEFAULT_TIMEOUT_ERROR_RETRIES
+        version = 3
 
-    if config_entry.version == 3:
-        config_entry.version = 4
+    if version == 3:
         new[CONF_TIMEOUT_SECONDS] = DEFAULT_TIMEOUT_SECONDS
+        version = 4
 
-    if config_entry.version == 4:
-        config_entry.version = 5
+    if version == 4:
         new[CONF_CLIENT_PREFIX] = ""
         new[CONF_CLIENT_POSTFIX] = ""
         new[CONF_DECO_PREFIX] = ""
         new[CONF_DECO_POSTFIX] = DEFAULT_DECO_POSTFIX
+        version = 5
 
-    if config_entry.version == 5:
-        config_entry.version = 6
+    if version == 5:
         new[CONF_HOST] = f"http://{new[CONF_HOST]}"
+        version = 6
 
-    hass.config_entries.async_update_entry(config_entry, data=new)
-
-    _LOGGER.info("Migration to version %s successful", config_entry.version)
+    if version != config_entry.version:
+        # ConfigEntry attributes are read-only in recent Home Assistant:
+        # the version must be updated through async_update_entry.
+        hass.config_entries.async_update_entry(config_entry, data=new, version=version)
+        _LOGGER.info("Migration to version %s successful", version)
 
     return True
