@@ -29,9 +29,12 @@ from .const import DEFAULT_SCAN_INTERVAL
 from .const import DEFAULT_TIMEOUT_ERROR_RETRIES
 from .const import DEFAULT_TIMEOUT_SECONDS
 from .const import DOMAIN
+from .exceptions import EmptyDataException
+from .exceptions import ForbiddenException
 from .exceptions import LoginForbiddenException
 from .exceptions import LoginInvalidException
 from .exceptions import TimeoutException
+from .exceptions import UnexpectedApiException
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -130,9 +133,15 @@ async def _async_test_credentials(hass: HomeAssistant, data: dict[str, Any]):
         return {}
     except TimeoutException:
         return {"base": "timeout_connect"}
-    except (LoginForbiddenException, LoginInvalidException) as err:
+    except (LoginForbiddenException, LoginInvalidException, ForbiddenException) as err:
         _LOGGER.error("Error authenticating credentials: %s", err)
         return {"base": "invalid_auth"}
+    except (EmptyDataException, UnexpectedApiException) as err:
+        # The host answered but not like a Deco admin API would (wrong
+        # device, reverse proxy error page, ...): surface it as a host
+        # problem instead of a generic "unknown" error.
+        _LOGGER.error("Unexpected response from host: %s", err)
+        return {"base": "invalid_host"}
     except aiohttp.ClientError as err:
         _LOGGER.error("Error connecting to host: %s", err)
         return {"base": "invalid_host"}

@@ -274,6 +274,15 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
         deco_coordinator = data.get(COORDINATOR_DECOS_KEY)
         clients_coordinator = data.get(COORDINATOR_CLIENTS_KEY)
 
+        # Shut the coordinators down before logging out: async_close only
+        # detaches listeners, it does not cancel a scheduled/in-flight
+        # refresh. Without this, a poll racing the logout could re-login
+        # right after it and leak an admin session that is never released.
+        if deco_coordinator is not None:
+            await deco_coordinator.async_shutdown()
+        if clients_coordinator is not None:
+            await clients_coordinator.async_shutdown()
+
         if deco_coordinator is not None:
             await deco_coordinator.async_close()
         if clients_coordinator is not None:
