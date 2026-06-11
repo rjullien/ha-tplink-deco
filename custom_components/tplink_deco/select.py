@@ -37,10 +37,12 @@ class DecoPollingIntervalSelect(SelectEntity):
         self._attr_unique_id = f"{config_entry.entry_id}_polling_interval"
 
     @property
-    def current_option(self) -> str:
+    def current_option(self) -> str | None:
         """Return current polling interval as string."""
-        value = self.config_entry.data.get(CONF_SCAN_INTERVAL, 30)
-        return str(value)
+        value = str(self.config_entry.data.get(CONF_SCAN_INTERVAL, 30))
+        # HA requires current_option to be one of the options; a custom
+        # interval (e.g. set via YAML import) would otherwise log errors.
+        return value if value in POLLING_INTERVAL_OPTIONS else None
 
     @property
     def device_info(self) -> DeviceInfo | None:

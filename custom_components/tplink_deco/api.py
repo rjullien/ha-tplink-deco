@@ -3,7 +3,6 @@ import base64
 import hashlib
 import json
 import logging
-import math
 import re
 import secrets
 from typing import Any
@@ -40,19 +39,20 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def byte_len(n: int) -> int:
-    return (int(math.log2(n)) + 8) >> 3
+    # Use bit_length instead of math.log2 to avoid float precision errors
+    # on large RSA moduli (log2 can round up near powers of two).
+    return (n.bit_length() + 7) >> 3
 
 
 def decode_name_with_fallback(name: str):
     try:
-        name = base64.b64decode(name)
-        return name.decode()
+        return base64.b64decode(name).decode()
     except Exception as err:
         _LOGGER.warning("Error decoding name %s: %s", name, err)
         return f"<Error Decoding {name}>"
 
 
-def rsa_encrypt(n: int, e: int, plaintext: bytes) -> bytes:
+def rsa_encrypt(n: int, e: int, plaintext: bytes) -> str:
     """
     RSA encrypts plaintext. TP-Link breaks the plaintext down into blocks and concatenates the output.
     :param n: The RSA public key's n value
@@ -93,18 +93,18 @@ def aes_encrypt(key: bytes, iv: bytes, plaintext: bytes) -> bytes:
     return ciphertext
 
 
-def aes_decrypt(key: bytes, iv: bytes, plaintext: bytes) -> bytes:
+def aes_decrypt(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
     """
-    AES-CBC decrypt with PKCS #7 padding.
+    AES-CBC decrypt. PKCS #7 padding is NOT removed here.
     :param key: The AES key
     :param iv: The AES IV
-    :param plaintext: Data to encrypt
-    :return: Ciphertext
+    :param ciphertext: Data to decrypt
+    :return: Padded plaintext
     """
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
     decryptor = cipher.decryptor()
-    ciphertext = decryptor.update(plaintext) + decryptor.finalize()
-    return ciphertext
+    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+    return plaintext
 
 
 def check_data_error_code(context, data):
@@ -134,7 +134,9 @@ class TplinkDecoApi:
         self._session = session
         self._timeout_error_retries = timeout_error_retries
         self._timeout_seconds = timeout_seconds
-        self._auth_errors = 0
+        # MD5(username+password) is required by the TP-Link Deco protocol for
+        # the request signature. Computed once instead of on every request.
+        self._auth_hash = hashlib.md5(f"{username}{password}".encode()).hexdigest()
 
         self._aes_key = None
         self._aes_key_bytes = None
@@ -176,7 +178,7 @@ class TplinkDecoApi:
             params={"form": "device_list"},
             data=self._encode_payload(device_list_payload),
         )
-        data = self._decrypt_data(context, response_json["data"])
+        data = self._decrypt_data(context, response_json.get("data", ""))
         check_data_error_code(context, data)
 
         try:
@@ -218,7 +220,7 @@ class TplinkDecoApi:
             data=self._encode_payload(client_payload),
         )
 
-        data = self._decrypt_data(context, response_json["data"])
+        data = self._decrypt_data(context, response_json.get("data", ""))
         check_data_error_code(context, data)
         _LOGGER.debug("Rebooted decos %s", deco_macs)
 
@@ -239,7 +241,7 @@ class TplinkDecoApi:
             data=self._encode_payload(performance_payload),
         )
 
-        data = self._decrypt_data(context, response_json["data"])
+        data = self._decrypt_data(context, response_json.get("data", ""))
         check_data_error_code(context, data)
         return data
 
@@ -259,7 +261,7 @@ class TplinkDecoApi:
             data=self._encode_payload(client_payload),
         )
 
-        data = self._decrypt_data(context, response_json["data"])
+        data = self._decrypt_data(context, response_json.get("data", ""))
         check_data_error_code(context, data)
 
         try:
@@ -278,12 +280,13 @@ class TplinkDecoApi:
 
     def _generate_aes_key_and_iv(self):
         # TPLink requires key and IV to be a 16 digit number (no leading 0s)
-        self._aes_key = secrets.randbelow(MAX_AES_KEY - MIN_AES_KEY) + MIN_AES_KEY
-        self._aes_iv = secrets.randbelow(MAX_AES_KEY - MIN_AES_KEY) + MIN_AES_KEY
+        self._aes_key = secrets.randbelow(MAX_AES_KEY - MIN_AES_KEY + 1) + MIN_AES_KEY
+        self._aes_iv = secrets.randbelow(MAX_AES_KEY - MIN_AES_KEY + 1) + MIN_AES_KEY
         self._aes_key_bytes = str(self._aes_key).encode("utf-8")
         self._aes_iv_bytes = str(self._aes_iv).encode("utf-8")
-        _LOGGER.debug("aes_key=%s", self._aes_key)
-        _LOGGER.debug("aes_iv=%s", self._aes_iv)
+        # Never log the actual key/IV: anyone with access to debug logs could
+        # decrypt the session traffic (which includes the admin password).
+        _LOGGER.debug("Generated new AES session key and IV")
 
     # Fetch password RSA keys
     async def _async_fetch_keys(self):
@@ -395,20 +398,21 @@ class TplinkDecoApi:
                 )
             ) from err
 
-        data = self._decrypt_data(context, response_json["data"])
+        data = self._decrypt_data(context, response_json.get("data", ""))
         error_code = data.get("error_code")
         result = data.get("result")
         if error_code != 0:
             if error_code == -5002:
                 self.clear_auth()
-                attempts = result.get("attemptsAllowed", "unknown")
+                attempts = (result or {}).get("attemptsAllowed", "unknown")
                 raise LoginInvalidException(attempts)
             raise UnexpectedApiException(f"Login error data={data}")
         check_data_error_code(context, data)
 
         try:
             self._stok = result["stok"]
-            _LOGGER.debug("stok=%s", self._stok)
+            # The stok is the admin session token: never log its value.
+            _LOGGER.debug("Login successful, received stok")
         except Exception as err:
             _LOGGER.error("%s parse response error=%s, data=%s", context, err, data)
             raise UnexpectedApiException from err
@@ -418,14 +422,11 @@ class TplinkDecoApi:
                 "Login response did not have a Set-Cookie header"
             )
 
-        # Login success
-        self._auth_errors = 0
-
     async def _async_post(
         self,
         context: str,
         url: str,
-        params: dict[str:Any],
+        params: dict[str, Any],
         data: Any,
     ) -> dict:
         headers = {CONTENT_TYPE: "application/json"}
@@ -456,21 +457,19 @@ class TplinkDecoApi:
                     match = re.search(r"(sysauth=[a-f0-9]+)", cookie_header)
                     if match:
                         self._cookie = match.group(1)
-                        _LOGGER.debug("Found new cookie: %s", self._cookie)
+                        # The sysauth cookie is a session credential: never
+                        # log its value.
+                        _LOGGER.debug("Received new sysauth session cookie")
                         break
 
                 # Soms antwoordt de server met de verkeerde content-type
                 response_json = await response.json(content_type=None)
-                if "error_code" in response_json:
-                    error_code = response_json.get("error_code")
-                    if error_code != 0 and error_code != "":
-                        _LOGGER.debug(
-                            "%s error_code=%s, response_json=%s",
-                            context,
-                            error_code,
-                            response_json,
-                        )
-                        raise UnexpectedApiException(f"{context} error: {error_code}")
+                if not isinstance(response_json, dict):
+                    raise EmptyDataException(f"{context} response is not a JSON object")
+                # Reuse check_data_error_code so a top-level
+                # error_code="timeout" raises TimeoutException (and is
+                # retried) instead of an UnexpectedApiException.
+                check_data_error_code(context, response_json)
 
                 return response_json
         except asyncio.TimeoutError as err:
@@ -532,11 +531,9 @@ class TplinkDecoApi:
             message = "_seq is None, login required"
             raise EmptyDataException(message)
         seq_with_data_len = self._seq + data_len
-        auth_hash = (
-            hashlib.md5(f"{self._username}{self._password}".encode()).digest().hex()
-        )
         sign_text = (
-            f"k={self._aes_key}&i={self._aes_iv}&h={auth_hash}&s={seq_with_data_len}"
+            f"k={self._aes_key}&i={self._aes_iv}"
+            f"&h={self._auth_hash}&s={seq_with_data_len}"
         )
         sign = rsa_encrypt(self._sign_rsa_n, self._sign_rsa_e, sign_text.encode())
         return sign
@@ -555,25 +552,40 @@ class TplinkDecoApi:
         self._seq = None
         self._stok = None
         self._cookie = None
+        # Also clear the cached RSA keys. If the Deco rebooted and rotated
+        # its keys, re-using stale keys would make every re-login fail until
+        # Home Assistant is restarted. Fetching them again is one cheap
+        # request during login.
+        self._password_rsa_n = None
+        self._password_rsa_e = None
+        self._sign_rsa_n = None
+        self._sign_rsa_e = None
 
     async def async_logout(self):
         """Logout from the Deco to release the admin session."""
-        if self._stok is None or self._cookie is None:
-            self.clear_auth()
-            return
-        try:
-            _LOGGER.debug("Logging out from Deco")
-            logout_payload = {"operation": "logout"}
-            await self._async_post(
-                "Logout",
-                f"{self._host}/cgi-bin/luci/;stok={self._stok}/admin/system",
-                params={"form": "logout"},
-                data=json.dumps(logout_payload),
-            )
-        except Exception as err:
-            _LOGGER.debug("Logout failed (best effort): %s", err)
-        finally:
-            self.clear_auth()
+        # Serialize with the other API calls: logout is called from unload
+        # while a poll may still be in flight, and the Deco firmware cannot
+        # handle concurrent admin requests reliably.
+        async with self._request_lock:
+            if self._stok is None or self._cookie is None:
+                self.clear_auth()
+                return
+            try:
+                _LOGGER.debug("Logging out from Deco")
+                logout_payload = {"operation": "logout"}
+                # Authenticated ;stok= endpoints require the signed/encrypted
+                # payload format. A plain JSON body is rejected by the Deco,
+                # which means the session would never actually be released.
+                await self._async_post(
+                    "Logout",
+                    f"{self._host}/cgi-bin/luci/;stok={self._stok}/admin/system",
+                    params={"form": "logout"},
+                    data=self._encode_payload(logout_payload),
+                )
+            except Exception as err:
+                _LOGGER.debug("Logout failed (best effort): %s", err)
+            finally:
+                self.clear_auth()
 
     def _decrypt_data(self, context: str, data: str):
         if data == "":
@@ -589,10 +601,12 @@ class TplinkDecoApi:
             data_decrypted = aes_decrypt(
                 self._aes_key_bytes, self._aes_iv_bytes, data_decoded
             )
-            # Remove the PKCS #7 padding
-            num_padding_bytes = int(data_decrypted[-1])
-            data_decrypted = data_decrypted[:-num_padding_bytes].decode()
-            data_json = json.loads(data_decrypted)
+            # Remove the PKCS #7 padding with a validating unpadder instead
+            # of blindly slicing on the last byte (which silently corrupts
+            # the payload on malformed/truncated responses).
+            unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
+            data_unpadded = unpadder.update(data_decrypted) + unpadder.finalize()
+            data_json = json.loads(data_unpadded.decode())
             return data_json
         except Exception as err:
             _LOGGER.error(

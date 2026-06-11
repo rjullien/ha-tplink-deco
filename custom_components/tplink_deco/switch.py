@@ -17,16 +17,18 @@ async def async_setup_entry(
     """Set up switch."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id][COORDINATOR_DECOS_KEY]
 
-    async_add_entities([DecoPollingSwitch(coordinator)])
+    async_add_entities([DecoPollingSwitch(config_entry, coordinator)])
 
 
 class DecoPollingSwitch(SwitchEntity):
     """Switch to control Deco polling."""
 
-    def __init__(self, coordinator) -> None:
+    def __init__(self, config_entry: ConfigEntry, coordinator) -> None:
         self.coordinator = coordinator
         self._attr_name = "Polling"
-        self._attr_unique_id = "tplink_deco_polling"
+        # Scoped to the config entry: a global unique_id would collide when
+        # several Deco networks are configured.
+        self._attr_unique_id = f"{config_entry.entry_id}_polling"
         self._attr_icon = "mdi:lan-connect"
 
     @property

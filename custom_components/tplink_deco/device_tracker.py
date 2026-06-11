@@ -283,11 +283,6 @@ class TplinkDecoDeviceTracker(CoordinatorEntity, RestoreEntity, ScannerEntity):
         return create_device_info(self._deco, self.coordinator.data.master_deco)
 
     @callback
-    async def async_on_demand_update(self):
-        """Request update from coordinator."""
-        await self.coordinator.async_request_refresh()
-
-    @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         if self._update_from_deco():
@@ -413,11 +408,6 @@ class TplinkDecoClientDeviceTracker(CoordinatorEntity, RestoreEntity, ScannerEnt
         """Return device info."""
         deco = self._coordinator_decos.data.decos.get(self._attr_deco_mac)
         return create_device_info(deco, self._coordinator_decos.data.master_deco)
-
-    @callback
-    async def async_on_demand_update(self):
-        """Request update from coordinator."""
-        await self.coordinator.async_request_refresh()
 
     @callback
     def _handle_coordinator_update(self) -> None:
