@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from homeassistant.components.device_tracker.config_entry import ScannerEntity
+from homeassistant.components.device_tracker import ScannerEntity
 from homeassistant.components.device_tracker.const import ATTR_IP
 from homeassistant.components.device_tracker.const import SourceType
 from homeassistant.config_entries import ConfigEntry

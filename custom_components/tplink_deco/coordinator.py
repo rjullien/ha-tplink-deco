@@ -7,6 +7,8 @@ import ipaddress
 import logging
 from typing import Any
 
+import aiohttp
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE
 from homeassistant.core import HomeAssistant
@@ -17,6 +19,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .api import TplinkDecoApi
+from .api import normalize_name
 from .const import DOMAIN
 from .const import SIGNAL_CLIENT_ADDED
 from .const import SIGNAL_DECO_ADDED
@@ -91,7 +94,7 @@ class TpLinkDeco:
         if self.name is None:
             nickname = data.get("nickname")
             if nickname:
-                self.name = snake_case_to_title_space(nickname)
+                self.name = normalize_name(snake_case_to_title_space(nickname))
         self.ip_address = filter_invalid_ip(data.get("device_ip"))
         self.online = data.get("group_status") == "connected"
         inet = data.get("inet_status")
@@ -328,14 +331,28 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         deco_macs = self._deco_update_coordinator.data.decos.keys()
         utc_point_in_time = dt_util.utcnow()
         # Send list client requests sequentially (serialization is now
-        # handled by the API request lock, no need for artificial delays)
+        # handled by the API request lock, no need for artificial delays).
+        # If a node returns 5xx, fall back to global client_list query
+        # (upstream #527: XE75 1.3.x firmware returns 502 per-node).
         deco_client_responses = []
+        five_xx_fallback = False
         for deco_mac in deco_macs:
             try:
                 node_clients = await async_call_and_propagate_config_error(
                     self.api.async_list_clients, deco_mac
                 )
                 deco_client_responses.append(node_clients)
+            except aiohttp.ClientResponseError as err:
+                if err.status >= 500:
+                    _LOGGER.debug(
+                        "Per-node client_list failed for %s (%s); "
+                        "falling back to global query",
+                        deco_mac,
+                        err,
+                    )
+                    five_xx_fallback = True
+                    break
+                raise
             except Exception as err:
                 _LOGGER.warning(
                     "_async_update_data: Failed to get clients for deco %s: %s",
@@ -343,6 +360,14 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
                     err,
                 )
                 deco_client_responses.append(None)
+
+        if five_xx_fallback:
+            # Fall back to a single global query; attribute all clients to master.
+            master_deco = self._deco_update_coordinator.data.master_deco
+            deco_macs = [master_deco.mac if master_deco is not None else "default"]
+            deco_client_responses = [
+                await async_call_and_propagate_config_error(self.api.async_list_clients)
+            ]
 
         if len(deco_client_responses) > 0:
             # deco_macs is not subscriptable, must be iterated
