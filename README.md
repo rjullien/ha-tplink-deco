@@ -88,6 +88,69 @@ Configurable:
 
 ## 📝 Changelog
 
+### v3.14.0
+
+- Sync upstream: fallback to global client_list on 5xx per-node errors (#527)
+- Add `normalize_name()` to strip legacy `<Error Decoding ...>` patterns (#531)
+- Fix HA 2026.5+ deprecated import (`device_tracker.config_entry` → `device_tracker`)
+- Keep fork improvements: sequential requests + per-node error handling
+
+---
+
+### v3.13.1
+
+- Sync with upstream (v3.8.1 → v3.13.1)
+- Cherry-pick upstream #526: decode_name_with_fallback guard + validate
+- Keep extended polling intervals [10, 30, 60, 120, 180, 240, 300]
+
+---
+
+### v3.13.0
+
+- Deep security/performance/bug audit
+- Shutdown coordinators before logout
+- Clearer config flow error messages
+
+---
+
+### v3.12.0
+
+- Fix session churn: prevent session re-creation on every poll
+- Add request serialization (API lock)
+- Clear auth on 5xx errors (502 Bad Gateway)
+
+---
+
+### v3.11.0
+
+- Fix 8 preexisting upstream bugs found during code audit
+- Resilient performance endpoint
+- Logout under lock
+
+---
+
+### v3.10.0
+
+- Fix presence flickering on node failure
+- Sensor crash guard
+- Add 180/240/300s polling interval options
+
+---
+
+### v3.9.0
+
+- Config flow and HA compatibility fixes
+- Fix config flow validation
+- Fix Deco name decoding
+
+---
+
+### v3.8.0
+
+- Fix client naming by adding `ui_device_name` attribute
+
+---
+
 ### v3.7.4
 
 - Added CPU usage sensors (raw and smoothed)
