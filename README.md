@@ -88,6 +88,8 @@ Configurable:
 
 ## 📝 Changelog
 
+> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) up to commit `cc2360b` (v3.8.2 + #527 + #528 + #531). Remaining upstream-only: ruff 0.15.17 bump (cosmetic) + changelog removal.
+
 ### v3.14.0
 
 - Sync upstream: fallback to global client_list on 5xx per-node errors (#527)
