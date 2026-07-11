@@ -1,6 +1,6 @@
 ---
 name: ha-tplink-deco-release
-description: Manage releases for the rjullien/ha-tplink-deco Home Assistant HACS fork — versioning (X.Y.Z.N), manifest/README updates, PR merge, GitHub release tag, and HACS verification. Use when the user asks to release, tag, publish, bump version, or ship a HACS update.
+description: Manage releases for the rjullien/ha-tplink-deco Home Assistant HACS fork — versioning (X.Y.Z.N), documentation updates (README changelog, fork status, GitHub release notes), manifest updates, PR merge, GitHub release tag, and HACS verification. Use when the user asks to release, tag, publish, bump version, or ship a HACS update.
 ---
 
 # ha-tplink-deco-release
@@ -21,6 +21,8 @@ Runbook for publishing a new version of **rjullien/ha-tplink-deco** (HACS custom
 | HACS type | Custom integration (`hacs.json` at repo root) |
 | Version file | `custom_components/tplink_deco/manifest.json` → `"version"` |
 | Changelog | `README.md` → section `## 📝 Changelog` |
+| Agent entrypoint | `AGENTS.md` → links to this skill |
+| HACS config | `hacs.json` → min HA version (`homeassistant` key) |
 | CI workflow | `.github/workflows/tests.yaml` (pre-commit, HACS, hassfest) |
 | Default branch | `main` |
 
@@ -50,25 +52,119 @@ Update README fork status block when upstream alignment changes:
 > **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision.
 ```
 
+## Documentation updates (mandatory)
+
+**Never release without updating docs in the same PR/commit as the version bump.** HACS has `render_readme: true` — users read `README.md` before updating.
+
+### What to update, by release type
+
+| File | Every release | Upstream align | Feature/fix only |
+|------|---------------|----------------|------------------|
+| `custom_components/tplink_deco/manifest.json` | ✅ version | ✅ | ✅ |
+| `README.md` → changelog `### vX.Y.Z.N` | ✅ | ✅ | ✅ |
+| `README.md` → fork status block | — | ✅ commit + date | — |
+| GitHub release notes | ✅ | ✅ | ✅ |
+| `README.md` → HA badge (`2026.x+`) | — | if min HA changed | if min HA changed |
+| `hacs.json` → `homeassistant` | — | if min HA changed | if min HA changed |
+| `AGENTS.md` | — | if paths/process change | — |
+| `skills/ha-tplink-deco-release/SKILL.md` | — | if process changes | — |
+| `translations/*.json` | — | if UI strings changed | if UI strings changed |
+
+### README changelog rules
+
+1. **Insert new section at the top** of the changelog (right after the fork status block), never at the bottom.
+2. **Format:**
+   ```markdown
+   ### vX.Y.Z.N
+
+   - Short bullet: what changed and why (link upstream PR if cherry-picked, e.g. #539)
+   - Another bullet if needed
+   - Mention fork improvements preserved when syncing upstream
+
+   ---
+   ```
+3. **Bullets:** one change per line, past tense or imperative, include issue/PR numbers when relevant.
+4. **Fork-only release** (`N` > 0, same upstream base): no fork status change needed.
+5. **Upstream align** (`N` = 0 on new base): update fork status with upstream tag, commit hash, date.
+6. **Do not delete** older changelog entries — this fork keeps full history (unlike upstream which removed old changelog).
+
+### README changelog template
+
+```markdown
+### v3.9.1.1
+
+- Fix: describe the user-visible fix
+- Keep fork improvements: session lock, extended polling, security audit
+
+---
+```
+
+### Sync README ↔ GitHub release notes
+
+The GitHub release body must **mirror** the README changelog (same facts, can be slightly expanded):
+
+| README changelog | GitHub release |
+|------------------|----------------|
+| `### v3.9.1.1` bullets | `## Highlights` + `### Fixes` / `### Features` sections |
+| Fork status context | Optional one-liner in Highlights |
+| Compare link | `**Full Changelog:** https://github.com/rjullien/ha-tplink-deco/compare/vPREV...vNEW` |
+
+**Workflow:** write README changelog first, then copy/adapt to `gh release create --notes`.
+
+### HA compatibility docs
+
+When a fix targets a specific HA version (e.g. HA 2026.7 / aiohttp 3.14):
+
+1. Mention it explicitly in the changelog bullet.
+2. Update README badge if this becomes the new minimum:
+   ```markdown
+   [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.7%2B-blue?style=for-the-badge)](...)
+   ```
+3. Update `hacs.json` `"homeassistant"` to match (keep in sync with badge).
+4. Do **not** bump min HA version for fixes that are backward-compatible.
+
+### Doc update step in release workflow
+
+Include doc updates **in the same commit** as `manifest.json` version bump:
+
+```bash
+# Files to touch before opening PR:
+custom_components/tplink_deco/manifest.json   # version
+README.md                                    # changelog + fork status if needed
+# After merge, separately:
+# GitHub release notes (derived from README changelog)
+```
+
+### Doc validation
+
+The validator checks manifest, changelog presence, fork status block, and changelog structure:
+
+```bash
+bash skills/ha-tplink-deco-release/scripts/validate-release.sh <VERSION>
+```
+
+Fix all `ERROR` lines before releasing. Review `WARN` lines consciously.
+
 ## Pre-release checklist
 
 Run through this list **before** creating the tag:
 
 1. **Version bumped** in `custom_components/tplink_deco/manifest.json`
-2. **Changelog entry** added at top of `README.md` under `### vX.Y.Z.N`
-3. **Fork status** line updated if upstream alignment changed
-4. **PR merged** into `main` (or changes committed on `main`)
-5. **CI green** on the merge commit:
+2. **README changelog** added at top under `### vX.Y.Z.N` (with `---` separator, at least one bullet)
+3. **Fork status** block updated if upstream alignment changed (commit hash + date)
+4. **HA badge / hacs.json** updated if minimum HA version changed
+5. **PR merged** into `main` (or changes committed on `main`)
+6. **CI green** on the merge commit:
    ```bash
    gh pr checks <PR_NUMBER> --repo rjullien/ha-tplink-deco
    # or inspect the latest main workflow run
    ```
-6. **Tag does not exist** yet:
+7. **Tag does not exist** yet:
    ```bash
    git fetch origin --tags
    git tag -l 'v<VERSION>'
    ```
-7. **Local validation** (if Python available):
+8. **Local validation** (if Python available):
    ```bash
    python3 -m compileall custom_components/tplink_deco -q
    pre-commit run --all-files   # optional but recommended
@@ -91,9 +187,10 @@ git pull origin main
 git checkout -b cursor/<descriptive-name>-8019
 ```
 
-Edit:
+Edit (same commit):
 - `custom_components/tplink_deco/manifest.json` → `"version": "X.Y.Z.N"`
-- `README.md` → new changelog section + fork status if needed
+- `README.md` → new changelog section at top + fork status if upstream align
+- `hacs.json` / README HA badge → only if min HA version changed
 
 Commit, push, open PR, wait for CI.
 
@@ -124,6 +221,8 @@ gh release list --repo rjullien/ha-tplink-deco --limit 5
 
 ### 4. Create GitHub release (HACS picks this up)
 
+Build release notes from the README changelog written in step 1:
+
 ```bash
 VERSION="3.9.1.0"          # no v prefix
 PREV_TAG="v3.14.1"         # previous release tag
@@ -134,10 +233,10 @@ gh release create "v${VERSION}" \
   --title "${TITLE}" \
   --notes "## Highlights
 
-One-line summary.
+One-line summary (from README changelog).
 
 ### Fixes
-- ...
+- (copy/adapt bullets from README ### v${VERSION})
 
 ### Features
 - ...
@@ -174,6 +273,8 @@ Tell the user how to update in HA:
 - Do **not** delete or overwrite upstream tags (`v3.9.1` from amosyuen fetch may exist locally — fork tag is `v3.9.1.0`)
 - Do **not** release from a branch other than `main` without user approval
 - Do **not** skip README changelog — HACS has `render_readme: true`
+- Do **not** write GitHub release notes that contradict README changelog
+- Do **not** add changelog entry at the bottom of README — always at the top
 - Do **not** merge a full `upstream/main` blindly — cherry-pick functional fixes only (see upstream-align PRs)
 
 ## Upstream alignment releases
@@ -185,6 +286,7 @@ When syncing with amosyuen/ha-tplink-deco:
 3. Cherry-pick or port fixes preserving fork-only code (request lock, session churn, extended polling, security audit)
 4. Set version `X.Y.Z.0` where `X.Y.Z` = upstream release (e.g. upstream v3.9.1 → fork `3.9.1.0`)
 5. Document upstream commit hash in README fork status
+6. Write changelog bullets distinguishing upstream picks vs fork-only code preserved
 
 ## Example (v3.9.1.0 — reference release)
 

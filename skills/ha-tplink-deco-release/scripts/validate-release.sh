@@ -56,6 +56,42 @@ else
   else
     fail "README.md missing changelog section '### v${VERSION}'"
   fi
+
+  # 2a. Fork status block
+  if grep -q "> \*\*Fork status:\*\*" "$README"; then
+    ok "README.md has fork status block"
+  else
+    fail "README.md missing fork status block (> **Fork status:**)"
+  fi
+
+  if grep -q "> \*\*Versioning:\*\*" "$README"; then
+    ok "README.md documents versioning scheme"
+  else
+    fail "README.md missing versioning line (> **Versioning:**)"
+  fi
+
+  # 2b. Changelog has at least one bullet under the version heading
+  BULLET_COUNT=$(sed -n "/^### v${VERSION}\$/,/^---\$/p" "$README" | grep -c '^- ' || true)
+  if [[ "$BULLET_COUNT" -ge 1 ]]; then
+    ok "README changelog v${VERSION} has ${BULLET_COUNT} bullet(s)"
+  else
+    fail "README changelog '### v${VERSION}' has no bullet points (- ...)"
+  fi
+
+  # 2c. New changelog is near the top (first version heading in changelog section)
+  FIRST_VERSION_LINE=$(sed -n '/^## 📝 Changelog$/,/^## /p' "$README" | grep '^### v' | head -1)
+  if [[ "$FIRST_VERSION_LINE" == "### v${VERSION}" ]]; then
+    ok "README changelog v${VERSION} is the latest entry (first ### v)"
+  else
+    fail "README changelog v${VERSION} is not the first entry (found: ${FIRST_VERSION_LINE:-none})"
+  fi
+
+  # 2d. Separator after changelog entry (recommended)
+  if sed -n "/^### v${VERSION}\$/,/^### v/p" "$README" | grep -q '^---$'; then
+    ok "README changelog v${VERSION} followed by --- separator"
+  else
+    warn "README changelog v${VERSION} missing --- separator before previous entry"
+  fi
 fi
 
 # 3. Tag must not already exist on origin
