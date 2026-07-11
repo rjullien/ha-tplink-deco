@@ -28,26 +28,29 @@ Runbook for publishing a new version of **rjullien/ha-tplink-deco** (HACS custom
 
 ## Versioning scheme (mandatory)
 
-Format: **`X.Y.Z.N`** (4 parts)
+Format: **`X.Y.Z.N`** (4 parts) — **aligned on upstream version numbers**
 
 | Part | Meaning | Example |
 |------|---------|---------|
-| `X.Y.Z` | **Monotonic fork release** (must be > last published HACS version) | `3.15.0` |
-| `N` | Fork revision on that release line | `0` |
+| `X.Y.Z` | Upstream base version this fork is aligned on | `3.9.1` |
+| `N` | Fork revision on that base (0, 1, 2…) | `1` |
 
-**Critical — HACS semver ordering:** HACS uses AwesomeVersion. A user on `3.14.1` will **not** see an update to `3.9.1.0` because `9 < 14`. The fork release number must always increase.
+Examples:
+- First fork release on upstream 3.9.1 → **`3.9.1.0`**
+- Fork-only fix, same upstream base → **`3.9.1.1`**
+- Upstream releases 3.10.0, fork aligns → **`3.10.0.0`**
 
-**Upstream alignment** is documented in the README **fork status** block, not in the semver position:
+**Rules:**
+- `manifest.json` version = release version **without** `v` prefix (`3.9.1.1`)
+- Git tag and GitHub release = **with** `v` prefix (`v3.9.1.1`)
+
+**HACS caveat (legacy fork users on v3.14.x):** AwesomeVersion treats `3.9.1.x` < `3.14.1`. HACS will **not** auto-offer the update. Document in README that users must **Redownload / Reinstall** from `rjullien/ha-tplink-deco`. This is intentional — upstream alignment of version numbers takes priority.
+
+Update README fork status block when upstream alignment changes:
 
 ```markdown
-> **Fork status:** Aligned with upstream ... **v3.9.1** (commit `e4ac405`, YYYY-MM-DD).
-> **Versioning:** `X.Y.Z.N` — monotonic fork release + revision. Upstream base in fork status.
-```
-
-Before releasing, verify the new version is greater than the installed one:
-
-```bash
-python3 -c "from awesomeversion import AwesomeVersion as V; print(V('NEW') > V('3.14.1'))"
+> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **vX.Y.Z** (commit `abcdef1`, YYYY-MM-DD).
+> **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision.
 ```
 
 ## Documentation updates (mandatory)
@@ -289,8 +292,8 @@ When syncing with amosyuen/ha-tplink-deco:
 1. Fetch upstream: `git fetch upstream --tags`
 2. Identify missing functional commits (not just dependabot)
 3. Cherry-pick or port fixes preserving fork-only code (request lock, session churn, extended polling, security audit)
-4. Set version `X.Y.Z.N` where `X.Y.Z` is **> last HACS-published fork version** (e.g. `3.15.0.0` after `3.14.1`)
-5. Document upstream commit hash + upstream tag in README fork status
+4. Set version `X.Y.Z.0` where `X.Y.Z` = upstream release (e.g. upstream v3.9.1 → fork `3.9.1.0`)
+5. Document upstream commit hash in README fork status
 6. Write changelog bullets distinguishing upstream picks vs fork-only code preserved
 
 ## Example (v3.9.1.0 — reference release)
