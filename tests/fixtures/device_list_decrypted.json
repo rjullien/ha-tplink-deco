@@ -1,0 +1,34 @@
+{
+  "error_code": 0,
+  "result": {
+    "device_list": [
+      {
+        "mac": "AA:BB:CC:DD:EE:01",
+        "nickname": "living_room",
+        "custom_nickname": "TGl2aW5nIFJvb20=",
+        "device_ip": "192.168.1.1",
+        "group_status": "connected",
+        "inet_status": "online",
+        "role": "master",
+        "connection_type": "wifi",
+        "hardware_ver": "1.0",
+        "software_ver": "1.2.10 Build 20251229",
+        "device_model": "X50",
+        "signal_level": {"band2_4": -48, "band5": -62},
+        "bssid_2g": "AA:BB:CC:DD:EE:00",
+        "bssid_5g": "AA:BB:CC:DD:EE:FF"
+      },
+      {
+        "mac": "AA:BB:CC:DD:EE:02",
+        "nickname": "bedroom",
+        "device_ip": "192.168.1.2",
+        "group_status": "connected",
+        "inet_status": "connected",
+        "role": "slave",
+        "connection_type": "wifi",
+        "backhual_speed": 1200,
+        "backhual_max_speed": 2400
+      }
+    ]
+  }
+}

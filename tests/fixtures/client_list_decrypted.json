@@ -1,0 +1,26 @@
+{
+  "error_code": 0,
+  "result": {
+    "client_list": [
+      {
+        "mac": "11:22:33:44:55:66",
+        "name": "UGhvbmU=",
+        "ip": "192.168.1.50",
+        "down_speed": 8000,
+        "up_speed": 4000,
+        "connection_type": "band5",
+        "interface": "main",
+        "online": true
+      },
+      {
+        "mac": "11:22:33:44:55:77",
+        "name": "<Error Decoding Laptop>",
+        "ip": "192.168.1.51",
+        "down_speed": 0,
+        "up_speed": 0,
+        "connection_type": "band2_4",
+        "interface": "guest"
+      }
+    ]
+  }
+}

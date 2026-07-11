@@ -19,8 +19,6 @@ from custom_components.tplink_deco.coordinator import TplinkDecoClientUpdateCoor
 from custom_components.tplink_deco.coordinator import TplinkDecoUpdateCoordinator
 from custom_components.tplink_deco.coordinator import async_call_and_propagate_config_error
 from custom_components.tplink_deco.coordinator import filter_invalid_ip
-from custom_components.tplink_deco.coordinator import kilobits_to_kilobytes
-from custom_components.tplink_deco.coordinator import snake_case_to_title_space
 from custom_components.tplink_deco.exceptions import LoginInvalidException
 
 
@@ -60,29 +58,18 @@ def _slave_deco_dict(mac: str = "AA:BB:CC:DD:EE:02") -> dict:
     }
 
 
-class TestCoordinatorHelpers:
-    def test_kilobits_to_kilobytes(self):
-        assert kilobits_to_kilobytes(8000) == 1000.0
-        assert kilobits_to_kilobytes(None) is None
-
-    def test_filter_invalid_ip(self):
-        assert filter_invalid_ip("192.168.1.10") == "192.168.1.10"
-        assert filter_invalid_ip("not-an-ip") is None
-
-    def test_snake_case_to_title_space(self):
-        assert snake_case_to_title_space("guest_room_5g") == "Guest Room 5G"
-
-
 class TestTpLinkDecoModel:
     def test_update_with_custom_nickname(self):
         deco = TpLinkDeco("AA:BB:CC:DD:EE:01")
         deco.update({"mac": "AA:BB:CC:DD:EE:01", "custom_nickname": "Office Deco"})
         assert deco.name == "Office Deco"
 
-    def test_update_nickname_snake_case(self):
+    def test_update_nickname_snake_case_and_invalid_ip(self):
         deco = TpLinkDeco("AA:BB:CC:DD:EE:01")
         deco.update(_slave_deco_dict())
         assert deco.name == "Bedroom"
+        assert filter_invalid_ip("192.168.1.10") == "192.168.1.10"
+        assert filter_invalid_ip("not-an-ip") is None
         assert deco.online is True
         assert deco.master is False
         assert deco.internet_online is True

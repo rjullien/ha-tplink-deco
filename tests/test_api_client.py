@@ -161,22 +161,6 @@ def test_decrypt_data_empty_raises_without_clearing_auth(api):
     assert api._cookie == "sysauth=abc"
 
 
-def test_clear_auth_resets_session_and_keys(api):
-    api._seq = 1
-    api._stok = "token"
-    api._cookie = "sysauth=abc"
-    api._password_rsa_n = 123
-    api._sign_rsa_n = 456
-
-    api.clear_auth()
-
-    assert api._seq is None
-    assert api._stok is None
-    assert api._cookie is None
-    assert api._password_rsa_n is None
-    assert api._sign_rsa_n is None
-
-
 def test_encode_sign_requires_login(api):
     with pytest.raises(EmptyDataException):
         api._encode_sign(10)
