@@ -77,8 +77,8 @@ Run through this list **before** creating the tag:
 Run the bundled validator:
 
 ```bash
-bash .cursor/skills/ha-tplink-deco-release/scripts/validate-release.sh <VERSION>
-# Example: bash .cursor/skills/ha-tplink-deco-release/scripts/validate-release.sh 3.9.1.0
+bash skills/ha-tplink-deco-release/scripts/validate-release.sh <VERSION>
+# Example: bash skills/ha-tplink-deco-release/scripts/validate-release.sh 3.9.1.0
 ```
 
 ## Release workflow (step by step)
@@ -201,6 +201,6 @@ When syncing with amosyuen/ha-tplink-deco:
 gh pr ready <N> --repo rjullien/ha-tplink-deco
 gh pr merge <N> --repo rjullien/ha-tplink-deco --squash --subject "feat: ... (#<N>)"
 git checkout main && git pull origin main
-bash .cursor/skills/ha-tplink-deco-release/scripts/validate-release.sh 3.9.1.1
+bash skills/ha-tplink-deco-release/scripts/validate-release.sh 3.9.1.1
 gh release create v3.9.1.1 --repo rjullien/ha-tplink-deco --title "v3.9.1.1 — ..." --notes "..."
 ```
