@@ -36,6 +36,7 @@ Run `bash skills/ha-tplink-deco-release/scripts/validate-release.sh <VERSION>` b
 ## Key paths
 
 - Integration: `custom_components/tplink_deco/`
+- Tests: `tests/` (pytest + coverage, see `requirements-dev.txt`)
 - Version: `custom_components/tplink_deco/manifest.json`
 - Changelog: `README.md` → `## 📝 Changelog`
 - HACS config: `hacs.json`

@@ -62,3 +62,28 @@ jobs:
 
       - name: Hassfest validation
         uses: "home-assistant/actions/hassfest@master"
+
+  pytest:
+    runs-on: ubuntu-latest
+    name: Pytest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python ${{ env.DEFAULT_PYTHON }}
+        uses: actions/setup-python@v6.3.0
+        with:
+          python-version: ${{ env.DEFAULT_PYTHON }}
+
+      - name: Upgrade pip
+        run: |
+          pip install --constraint=requirements.txt pip
+          pip --version
+
+      - name: Install dependencies
+        run: |
+          pip install --constraint=requirements.txt homeassistant pycryptodome
+          pip install -r requirements-dev.txt
+
+      - name: Run tests with coverage
+        run: pytest

@@ -23,7 +23,7 @@ Runbook for publishing a new version of **rjullien/ha-tplink-deco** (HACS custom
 | Changelog | `README.md` → section `## 📝 Changelog` |
 | Agent entrypoint | `AGENTS.md` → links to this skill |
 | HACS config | `hacs.json` → min HA version (`homeassistant` key) |
-| CI workflow | `.github/workflows/tests.yaml` (pre-commit, HACS, hassfest) |
+| CI workflow | `.github/workflows/tests.yaml` (pre-commit, HACS, hassfest, **pytest**) |
 | Default branch | `main` |
 
 ## Versioning scheme (mandatory)
@@ -164,7 +164,13 @@ Run through this list **before** creating the tag:
    git fetch origin --tags
    git tag -l 'v<VERSION>'
    ```
-8. **Local validation** (if Python available):
+8. **Tests pass** (pytest + coverage ≥ 45 % on core modules):
+   ```bash
+   pip install --constraint=requirements.txt homeassistant pycryptodome
+   pip install -r requirements-dev.txt
+   pytest
+   ```
+9. **Local validation** (if Python available):
    ```bash
    python3 -m compileall custom_components/tplink_deco -q
    pre-commit run --all-files   # optional but recommended
