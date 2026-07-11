@@ -89,13 +89,16 @@ Configurable:
 ## 📝 Changelog
 
 > **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.9.1** (commit `e4ac405`, 2026-07-03). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
+>
+> **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.9.1.0` = first release on upstream 3.9.1).
 
-### v3.15.0
+### v3.9.1.0
 
 - Sync upstream v3.9.1: fix `EmptyDataException` on HA 2026.7 when router 307-redirects http→https (#539, aiohttp 3.14 cookie drop)
 - Sync upstream #531: config flow polling interval as dropdown selector (keeps fork intervals 180/240/300s)
 - Sync upstream CI/deps: actions/checkout v7, setup-python v6.3.0, release-drafter v7.5.1, ruff 0.15.20
 - Keep fork improvements: request serialization, session churn fix, 5xx fallback, security audit
+- Adopt 4-part versioning (`upstream.fork`) — replaces fork-only numbering from v3.14.x
 
 ---
 
