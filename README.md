@@ -96,7 +96,7 @@ Configurable:
 
 ### v3.9.1.1
 
-- Add pytest suite (40 tests, 48 % coverage on core modules)
+- Add pytest suite (55 tests, ~70 % coverage on api/config_flow/coordinator)
 - Release skill: doc rules + emplacement standard `skills/`
 - README: liens HACS pointent vers `rjullien/ha-tplink-deco`
 
