@@ -90,7 +90,15 @@ Configurable:
 
 > **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.9.1** (commit `e4ac405`, 2026-07-03). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
 >
-> **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.9.1.0` = first release on upstream 3.9.1).
+> **Versioning:** `X.Y.Z.N` — monotonic fork release (`X.Y.Z`, must increase for HACS updates) + revision (`N`). Upstream base is documented here in fork status, not in the semver (avoids `3.9.1.0` < `3.14.1` HACS skip).
+
+### v3.15.0.0
+
+- HACS fix: bump from `3.9.1.0` → `3.15.0.0` (`3.9.1.0` was numerically below `3.14.1`, so HACS did not offer the update)
+- Add pytest suite (40 tests, 48 % coverage on core modules)
+- Release skill: doc update rules + standard `skills/` location
+
+---
 
 ### v3.9.1.0
 
@@ -99,6 +107,7 @@ Configurable:
 - Sync upstream CI/deps: actions/checkout v7, setup-python v6.3.0, release-drafter v7.5.1, ruff 0.15.20
 - Keep fork improvements: request serialization, session churn fix, 5xx fallback, security audit
 - Adopt 4-part versioning (`upstream.fork`) — replaces fork-only numbering from v3.14.x
+- **Note:** use `v3.15.0.0` or later for HACS update from `v3.14.x` (semver ordering)
 
 ---
 
@@ -213,9 +222,13 @@ Configurable:
 
 ## 📦 Installation
 
-### HACS
+### HACS (this fork)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=amosyuen&repository=ha-tplink-deco&category=integration)
+Add custom repository: **`rjullien/ha-tplink-deco`** (category: Integration).
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=rjullien&repository=ha-tplink-deco&category=integration)
+
+> Do **not** use `amosyuen/ha-tplink-deco` if you want this fork (session lock, HA 2026.7 fix, extended polling).
 
 ### Manual
 
@@ -305,9 +318,13 @@ target:
 
 ## Installation
 
-### HACS
+### HACS (this fork)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=amosyuen&repository=ha-tplink-deco&category=integration)
+Add custom repository: **`rjullien/ha-tplink-deco`** (category: Integration).
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=rjullien&repository=ha-tplink-deco&category=integration)
+
+> Do **not** use `amosyuen/ha-tplink-deco` if you want this fork (session lock, HA 2026.7 fix, extended polling).
 
 ### Manual
 
