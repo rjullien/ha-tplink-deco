@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 
 import aiohttp
 import pytest
-from aiohttp.hdrs import SET_COOKIE
 
-from custom_components.tplink_deco.api import TplinkDecoApi
 from custom_components.tplink_deco.exceptions import EmptyDataException
 from custom_components.tplink_deco.exceptions import ForbiddenException
 from custom_components.tplink_deco.exceptions import TimeoutException
-
 from tests.helpers import make_redirect_history
 from tests.helpers import make_response
 

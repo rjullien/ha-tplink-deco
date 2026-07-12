@@ -5,10 +5,9 @@ from __future__ import annotations
 import base64
 import json
 
-import pytest
 from Crypto.PublicKey import RSA as CryptoRSA
+import pytest
 
-from custom_components.tplink_deco.api import aes_decrypt
 from custom_components.tplink_deco.api import aes_encrypt
 from custom_components.tplink_deco.api import byte_len
 from custom_components.tplink_deco.api import check_data_error_code
@@ -17,7 +16,6 @@ from custom_components.tplink_deco.api import normalize_name
 from custom_components.tplink_deco.api import rsa_encrypt
 from custom_components.tplink_deco.exceptions import TimeoutException
 from custom_components.tplink_deco.exceptions import UnexpectedApiException
-
 from tests.crypto_fixtures import load_fixture
 
 

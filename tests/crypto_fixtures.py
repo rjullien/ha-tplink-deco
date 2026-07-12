@@ -38,7 +38,9 @@ def prime_session_api(api: TplinkDecoApi) -> dict[str, Any]:
     return vectors
 
 
-def wrap_encrypted_response(inner: dict[str, Any], api: TplinkDecoApi) -> dict[str, Any]:
+def wrap_encrypted_response(
+    inner: dict[str, Any], api: TplinkDecoApi
+) -> dict[str, Any]:
     """Build a realistic Deco JSON envelope with encrypted data field."""
     return {"error_code": 0, "data": api._encode_data(inner)}
 

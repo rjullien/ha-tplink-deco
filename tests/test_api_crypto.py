@@ -5,8 +5,6 @@ from __future__ import annotations
 import pytest
 
 from custom_components.tplink_deco.api import byte_len
-from custom_components.tplink_deco.exceptions import EmptyDataException
-
 from tests.crypto_fixtures import load_fixture
 from tests.crypto_fixtures import prime_session_api
 
@@ -26,9 +24,9 @@ def test_encode_payload_embeds_golden_encrypted_data(api):
 
     assert payload.startswith("sign=")
     assert "&data=" in payload
-    assert vectors["read_operation_data_b64"].replace("+", "%2B").replace("=", "%3D") in (
-        payload
-    )
+    assert vectors["read_operation_data_b64"].replace("+", "%2B").replace(
+        "=", "%3D"
+    ) in (payload)
     sign_hex = payload.split("&data=")[0].removeprefix("sign=")
     assert len(sign_hex) == byte_len(api._sign_rsa_n) * 2
 

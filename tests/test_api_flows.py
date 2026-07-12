@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import json
-from unittest.mock import AsyncMock
-
 import pytest
 
 from custom_components.tplink_deco.api import TplinkDecoApi
 from custom_components.tplink_deco.exceptions import LoginInvalidException
-
 from tests.crypto_fixtures import expected_client_list_after_decode
 from tests.crypto_fixtures import expected_device_list_after_decode
 from tests.crypto_fixtures import load_fixture
