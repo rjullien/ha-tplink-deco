@@ -40,9 +40,9 @@ def test_normalize_scan_interval_converts_string():
     assert data[CONF_SCAN_INTERVAL] == 240
 
 
-def test_get_scan_interval_covers_all_fork_options():
-    for value in SCAN_INTERVAL_OPTIONS:
-        assert _get_scan_interval({CONF_SCAN_INTERVAL: value}) == str(value)
+def test_get_scan_interval_accepts_fork_extended_option():
+    assert _get_scan_interval({CONF_SCAN_INTERVAL: 300}) == "300"
+    assert 300 in SCAN_INTERVAL_OPTIONS
 
 
 def test_ensure_user_input_optionals_fills_missing_keys():

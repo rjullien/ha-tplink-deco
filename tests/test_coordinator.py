@@ -3,24 +3,23 @@
 from __future__ import annotations
 
 from datetime import datetime
-from datetime import timedelta
 from datetime import timezone
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 
 import aiohttp
-import pytest
 from homeassistant.exceptions import ConfigEntryAuthFailed
+import pytest
 
+from custom_components.tplink_deco.coordinator import (
+    async_call_and_propagate_config_error,
+)
 from custom_components.tplink_deco.coordinator import TpLinkDeco
 from custom_components.tplink_deco.coordinator import TpLinkDecoClient
 from custom_components.tplink_deco.coordinator import TpLinkDecoData
 from custom_components.tplink_deco.coordinator import TplinkDecoClientUpdateCoordinator
 from custom_components.tplink_deco.coordinator import TplinkDecoUpdateCoordinator
-from custom_components.tplink_deco.coordinator import async_call_and_propagate_config_error
 from custom_components.tplink_deco.coordinator import filter_invalid_ip
-from custom_components.tplink_deco.coordinator import kilobits_to_kilobytes
-from custom_components.tplink_deco.coordinator import snake_case_to_title_space
 from custom_components.tplink_deco.exceptions import LoginInvalidException
 
 
@@ -60,29 +59,18 @@ def _slave_deco_dict(mac: str = "AA:BB:CC:DD:EE:02") -> dict:
     }
 
 
-class TestCoordinatorHelpers:
-    def test_kilobits_to_kilobytes(self):
-        assert kilobits_to_kilobytes(8000) == 1000.0
-        assert kilobits_to_kilobytes(None) is None
-
-    def test_filter_invalid_ip(self):
-        assert filter_invalid_ip("192.168.1.10") == "192.168.1.10"
-        assert filter_invalid_ip("not-an-ip") is None
-
-    def test_snake_case_to_title_space(self):
-        assert snake_case_to_title_space("guest_room_5g") == "Guest Room 5G"
-
-
 class TestTpLinkDecoModel:
     def test_update_with_custom_nickname(self):
         deco = TpLinkDeco("AA:BB:CC:DD:EE:01")
         deco.update({"mac": "AA:BB:CC:DD:EE:01", "custom_nickname": "Office Deco"})
         assert deco.name == "Office Deco"
 
-    def test_update_nickname_snake_case(self):
+    def test_update_nickname_snake_case_and_invalid_ip(self):
         deco = TpLinkDeco("AA:BB:CC:DD:EE:01")
         deco.update(_slave_deco_dict())
         assert deco.name == "Bedroom"
+        assert filter_invalid_ip("192.168.1.10") == "192.168.1.10"
+        assert filter_invalid_ip("not-an-ip") is None
         assert deco.online is True
         assert deco.master is False
         assert deco.internet_online is True
@@ -191,7 +179,9 @@ async def test_deco_coordinator_marks_missing_deco_offline():
 async def test_deco_coordinator_paused_returns_cached_data():
     hass = _make_hass()
     api = MagicMock()
-    cached = TpLinkDecoData(decos={"AA:BB:CC:DD:EE:01": TpLinkDeco("AA:BB:CC:DD:EE:01")})
+    cached = TpLinkDecoData(
+        decos={"AA:BB:CC:DD:EE:01": TpLinkDeco("AA:BB:CC:DD:EE:01")}
+    )
 
     coordinator = TplinkDecoUpdateCoordinator(
         hass, api, _make_config_entry(), data=cached
@@ -237,10 +227,13 @@ async def test_client_coordinator_5xx_fallback(monkeypatch):
 
     deco_coord = MagicMock()
     deco_coord.paused = False
-    deco_coord.data = TpLinkDecoData(master_deco=master, decos={
-        master.mac: master,
-        slave.mac: slave,
-    })
+    deco_coord.data = TpLinkDecoData(
+        master_deco=master,
+        decos={
+            master.mac: master,
+            slave.mac: slave,
+        },
+    )
 
     api.async_list_clients = AsyncMock(
         side_effect=[

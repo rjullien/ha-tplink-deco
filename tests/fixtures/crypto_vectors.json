@@ -1,0 +1,7 @@
+{
+  "aes_key": 1234567890123456,
+  "aes_iv": 6543210987654321,
+  "seq": 42,
+  "read_operation_data_b64": "fRWsWuU+ZK9hMddivIRSDu2X77PSFh50KGPf9hkkHag=",
+  "login_data_b64": "IpxBsaT8EBq1y6wjSx5E+3hQGjLN1SznWAhSZbJDIKdjUx2+V2O9Vw+4WjPRZ1Vbm/gO6kiWZgdCUgmSu2NOTQ=="
+}

@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 
 import aiohttp
 import pytest
-from aiohttp.hdrs import SET_COOKIE
 
-from custom_components.tplink_deco.api import TplinkDecoApi
 from custom_components.tplink_deco.exceptions import EmptyDataException
 from custom_components.tplink_deco.exceptions import ForbiddenException
 from custom_components.tplink_deco.exceptions import TimeoutException
-
 from tests.helpers import make_redirect_history
 from tests.helpers import make_response
 
@@ -159,22 +155,6 @@ def test_decrypt_data_empty_raises_without_clearing_auth(api):
 
     assert api._stok == "token"
     assert api._cookie == "sysauth=abc"
-
-
-def test_clear_auth_resets_session_and_keys(api):
-    api._seq = 1
-    api._stok = "token"
-    api._cookie = "sysauth=abc"
-    api._password_rsa_n = 123
-    api._sign_rsa_n = 456
-
-    api.clear_auth()
-
-    assert api._seq is None
-    assert api._stok is None
-    assert api._cookie is None
-    assert api._password_rsa_n is None
-    assert api._sign_rsa_n is None
 
 
 def test_encode_sign_requires_login(api):
