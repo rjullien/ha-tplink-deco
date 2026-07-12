@@ -15,32 +15,34 @@ Runbook for publishing a new version of **rjullien/ha-tplink-deco** (HACS custom
 
 ## Repository facts
 
-| Item | Value |
-|------|-------|
-| GitHub repo | `rjullien/ha-tplink-deco` |
-| HACS type | Custom integration (`hacs.json` at repo root) |
-| Version file | `custom_components/tplink_deco/manifest.json` → `"version"` |
-| Changelog | `README.md` → section `## 📝 Changelog` |
-| Agent entrypoint | `AGENTS.md` → links to this skill |
-| HACS config | `hacs.json` → min HA version (`homeassistant` key) |
-| CI workflow | `.github/workflows/tests.yaml` (pre-commit, HACS, hassfest, **pytest**) |
-| Default branch | `main` |
+| Item             | Value                                                                   |
+| ---------------- | ----------------------------------------------------------------------- |
+| GitHub repo      | `rjullien/ha-tplink-deco`                                               |
+| HACS type        | Custom integration (`hacs.json` at repo root)                           |
+| Version file     | `custom_components/tplink_deco/manifest.json` → `"version"`             |
+| Changelog        | `README.md` → section `## 📝 Changelog`                                 |
+| Agent entrypoint | `AGENTS.md` → links to this skill                                       |
+| HACS config      | `hacs.json` → min HA version (`homeassistant` key)                      |
+| CI workflow      | `.github/workflows/tests.yaml` (pre-commit, HACS, hassfest, **pytest**) |
+| Default branch   | `main`                                                                  |
 
 ## Versioning scheme (mandatory)
 
 Format: **`X.Y.Z.N`** (4 parts) — **aligned on upstream version numbers**
 
-| Part | Meaning | Example |
-|------|---------|---------|
+| Part    | Meaning                                       | Example |
+| ------- | --------------------------------------------- | ------- |
 | `X.Y.Z` | Upstream base version this fork is aligned on | `3.9.1` |
-| `N` | Fork revision on that base (0, 1, 2…) | `1` |
+| `N`     | Fork revision on that base (0, 1, 2…)         | `1`     |
 
 Examples:
+
 - First fork release on upstream 3.9.1 → **`3.9.1.0`**
 - Fork-only fix, same upstream base → **`3.9.1.1`**
 - Upstream releases 3.10.0, fork aligns → **`3.10.0.0`**
 
 **Rules:**
+
 - `manifest.json` version = release version **without** `v` prefix (`3.9.1.1`)
 - Git tag and GitHub release = **with** `v` prefix (`v3.9.1.1`)
 
@@ -59,22 +61,23 @@ Update README fork status block when upstream alignment changes:
 
 ### What to update, by release type
 
-| File | Every release | Upstream align | Feature/fix only |
-|------|---------------|----------------|------------------|
-| `custom_components/tplink_deco/manifest.json` | ✅ version | ✅ | ✅ |
-| `README.md` → changelog `### vX.Y.Z.N` | ✅ | ✅ | ✅ |
-| `README.md` → fork status block | — | ✅ commit + date | — |
-| GitHub release notes | ✅ | ✅ | ✅ |
-| `README.md` → HA badge (`2026.x+`) | — | if min HA changed | if min HA changed |
-| `hacs.json` → `homeassistant` | — | if min HA changed | if min HA changed |
-| `AGENTS.md` | — | if paths/process change | — |
-| `skills/ha-tplink-deco-release/SKILL.md` | — | if process changes | — |
-| `translations/*.json` | — | if UI strings changed | if UI strings changed |
+| File                                          | Every release | Upstream align          | Feature/fix only      |
+| --------------------------------------------- | ------------- | ----------------------- | --------------------- |
+| `custom_components/tplink_deco/manifest.json` | ✅ version    | ✅                      | ✅                    |
+| `README.md` → changelog `### vX.Y.Z.N`        | ✅            | ✅                      | ✅                    |
+| `README.md` → fork status block               | —             | ✅ commit + date        | —                     |
+| GitHub release notes                          | ✅            | ✅                      | ✅                    |
+| `README.md` → HA badge (`2026.x+`)            | —             | if min HA changed       | if min HA changed     |
+| `hacs.json` → `homeassistant`                 | —             | if min HA changed       | if min HA changed     |
+| `AGENTS.md`                                   | —             | if paths/process change | —                     |
+| `skills/ha-tplink-deco-release/SKILL.md`      | —             | if process changes      | —                     |
+| `translations/*.json`                         | —             | if UI strings changed   | if UI strings changed |
 
 ### README changelog rules
 
 1. **Insert new section at the top** of the changelog (right after the fork status block), never at the bottom.
 2. **Format:**
+
    ```markdown
    ### vX.Y.Z.N
 
@@ -84,6 +87,7 @@ Update README fork status block when upstream alignment changes:
 
    ---
    ```
+
 3. **Bullets:** one change per line, past tense or imperative, include issue/PR numbers when relevant.
 4. **Fork-only release** (`N` > 0, same upstream base): no fork status change needed.
 5. **Upstream align** (`N` = 0 on new base): update fork status with upstream tag, commit hash, date.
@@ -104,11 +108,11 @@ Update README fork status block when upstream alignment changes:
 
 The GitHub release body must **mirror** the README changelog (same facts, can be slightly expanded):
 
-| README changelog | GitHub release |
-|------------------|----------------|
-| `### v3.9.1.1` bullets | `## Highlights` + `### Fixes` / `### Features` sections |
-| Fork status context | Optional one-liner in Highlights |
-| Compare link | `**Full Changelog:** https://github.com/rjullien/ha-tplink-deco/compare/vPREV...vNEW` |
+| README changelog       | GitHub release                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| `### v3.9.1.1` bullets | `## Highlights` + `### Fixes` / `### Features` sections                               |
+| Fork status context    | Optional one-liner in Highlights                                                      |
+| Compare link           | `**Full Changelog:** https://github.com/rjullien/ha-tplink-deco/compare/vPREV...vNEW` |
 
 **Workflow:** write README changelog first, then copy/adapt to `gh release create --notes`.
 
@@ -195,6 +199,7 @@ git checkout -b cursor/<descriptive-name>-8019
 ```
 
 Edit (same commit):
+
 - `custom_components/tplink_deco/manifest.json` → `"version": "X.Y.Z.N"`
 - `README.md` → new changelog section at top + fork status if upstream align
 - `hacs.json` / README HA badge → only if min HA version changed
@@ -255,6 +260,7 @@ One-line summary (from README changelog).
 ```
 
 **Release rules:**
+
 - **Never** publish as `draft` (HACS needs a real release)
 - **Never** use `prerelease` unless explicitly requested
 - Title format: `vX.Y.Z.N — Short description` (matches historical releases)
@@ -271,6 +277,7 @@ git show "v${VERSION}:custom_components/tplink_deco/manifest.json" | grep versio
 ```
 
 Tell the user how to update in HA:
+
 1. HACS → Integrations → TP-Link Deco → **Update** / **Redownload**
 2. Restart Home Assistant or reload the integration
 

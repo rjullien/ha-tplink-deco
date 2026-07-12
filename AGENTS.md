@@ -6,8 +6,8 @@ This repository is a **fork** of [amosyuen/ha-tplink-deco](https://github.com/am
 
 Agent skills live in [`skills/`](skills/) — tool-agnostic, version-controlled runbooks.
 
-| Skill | When to use |
-|-------|-------------|
+| Skill                                                            | When to use                                           |
+| ---------------------------------------------------------------- | ----------------------------------------------------- |
 | [ha-tplink-deco-release](skills/ha-tplink-deco-release/SKILL.md) | Release, tag, publish, bump version, ship HACS update |
 
 **Before any release task:** read and follow [skills/ha-tplink-deco-release/SKILL.md](skills/ha-tplink-deco-release/SKILL.md) completely.
