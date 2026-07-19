@@ -29,7 +29,6 @@ from .const import ATTR_INTERNET_ONLINE
 from .const import ATTR_MASTER
 from .const import ATTR_SIGNAL_BAND2_4
 from .const import ATTR_SIGNAL_BAND5
-from .const import ATTR_UI_DEVICE_NAME
 from .const import ATTR_UP_KILOBYTES_PER_S
 from .const import CONF_CLIENT_POSTFIX
 from .const import CONF_CLIENT_PREFIX
@@ -49,6 +48,7 @@ from .coordinator import TplinkDecoUpdateCoordinator
 from .device import create_device_info
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+ATTR_UI_DEVICE_NAME = "ui_device_name"
 
 
 def _generate_name(name: str, prefix: str, postfix: str):
