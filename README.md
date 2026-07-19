@@ -88,11 +88,19 @@ Configurable:
 
 ## 📝 Changelog
 
-> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.9.1** (commit `e4ac405`, 2026-07-03). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
+> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.9.2** (commit `59f5b36`, 2026-07-12). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
 >
-> **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.9.1.1` = upstream 3.9.1, fork rev 1).
+> **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.9.2.0` = upstream 3.9.2, fork rev 0).
 >
-> **HACS depuis v3.14.x :** `3.9.1.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
+> **HACS depuis v3.14.x :** `3.9.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
+
+### v3.9.2.0
+
+- Sync upstream v3.9.2: sensor setup when master Deco is unavailable (#540)
+- Merge upstream CI/deps: ruff 0.15.21, actions/dependabot bumps
+- Keep fork improvements: request serialization, session churn fix, 5xx fallback, security audit, coordinator-listener sensor discovery
+
+---
 
 ### v3.9.1.1
 
