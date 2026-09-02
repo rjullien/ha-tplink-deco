@@ -85,7 +85,6 @@ async def async_create_and_refresh_coordinators(
         update_interval,
         client_data,
     )
-    await clients_coordinator.async_config_entry_first_refresh()
 
     return {
         COORDINATOR_DECOS_KEY: deco_coordinator,
@@ -164,11 +163,18 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
     data = await async_create_config_data(hass, config_entry)
     hass.data[DOMAIN][config_entry.entry_id] = data
+    clients_coordinator = data[COORDINATOR_CLIENTS_KEY]
 
     # Must be awaited (not wrapped in a task): otherwise unload can race
     # platform setup, and modern Home Assistant requires setup to be complete
     # before async_setup_entry returns.
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+
+    config_entry.async_create_background_task(
+        hass,
+        clients_coordinator.async_request_refresh(),
+        name="tplink_deco initial client refresh",
+    )
 
     _async_register_services(hass)
 

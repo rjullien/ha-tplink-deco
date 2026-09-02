@@ -26,6 +26,8 @@ This integration provides local polling control and diagnostics for TP-Link Deco
 - CPU usage (raw + smoothed)
 - Memory usage (raw + smoothed)
 - Backhaul and network diagnostics
+- Coordinator health (last successful update, response time, timeouts, query mode,
+  and last error)
 
 ### CPU / Memory sensors
 
@@ -44,6 +46,12 @@ Two types of sensors are available:
 - dashboards
 - automations
 - trend analysis
+
+> **Note:** CPU and memory come from the Deco `performance` endpoint, which some
+> firmwares do not expose or fail to answer under load. This is treated as
+> diagnostic-only data: if the call fails, presence detection and the rest of the
+> mesh keep refreshing normally, and the last known CPU/memory values are kept
+> instead of being reset to zero.
 
 ---
 
@@ -88,11 +96,22 @@ Configurable:
 
 ## 📝 Changelog
 
-> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.9.2** (commit `59f5b36`, 2026-07-12). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
+> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.10.0** (commit `800a88d`, 2026-08-27). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
 >
-> **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.9.2.0` = upstream 3.9.2, fork rev 0).
+> **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.10.0.0` = upstream 3.10.0, fork rev 0).
 >
-> **HACS depuis v3.14.x :** `3.9.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
+> **HACS depuis v3.14.x :** `3.10.0.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
+
+### v3.10.0.0
+
+- Sync upstream v3.10.0: redacted config-entry diagnostics and coordinator health sensors (#548, #575)
+- Start client polling in the background and persist the global fallback after per-node timeouts or 5xx responses (#556, #560, #563)
+- Initialize numerical client-count sensors after the first successful refresh and reliably discover client trackers (#554, #566, #567, #569)
+- Merge upstream CI/deps through `1046923`: setup-python 7.0.0, release-drafter 7.7.0, ruff 0.16.5, pre-commit 4.6.2
+- Fix: a failing CPU/memory (`performance`) endpoint no longer invalidates the whole Deco refresh — the mesh keeps updating and previous CPU/memory values are retained instead of being reset. Authentication errors still trigger the reauth flow
+- Keep fork improvements: request serialization, session anti-churn and logout, extended polling, security audit, resilient entity discovery
+
+---
 
 ### v3.9.2.0
 

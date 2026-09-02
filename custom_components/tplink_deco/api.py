@@ -130,7 +130,7 @@ def check_data_error_code(context, data):
         if error_code == "timeout":
             raise TimeoutException(f'{context} response error_code="timeout"')
 
-        _LOGGER.debug("%s error_code=%s, data=%s", context, error_code, data)
+        _LOGGER.debug("%s error_code=%s", context, error_code)
         raise UnexpectedApiException(f"{context} error_code={error_code}")
 
 
@@ -201,7 +201,6 @@ class TplinkDecoApi:
         try:
             device_list = data["result"]["device_list"]
             _LOGGER.debug("List devices device_count=%d", len(device_list))
-            _LOGGER.debug("List devices device_list=%s", device_list)
 
             for device in device_list:
                 custom_nickname = device.get("custom_nickname")
@@ -212,7 +211,7 @@ class TplinkDecoApi:
 
             return device_list
         except Exception as err:
-            _LOGGER.error("%s parse response error=%s, data=%s", context, err, data)
+            _LOGGER.error("%s parse response error=%s", context, err)
             raise err
 
     # Reboot decos.
@@ -263,8 +262,14 @@ class TplinkDecoApi:
         return data
 
     # Return list of clients. Default lists clients for all decos.
-    async def async_list_clients(self, deco_mac="default") -> dict:
-        return await self._async_call_with_retry(self._async_list_clients, deco_mac)
+    async def async_list_clients(
+        self, deco_mac="default", timeout_error_retries: int | None = None
+    ) -> dict:
+        return await self._async_call_with_retry(
+            self._async_list_clients,
+            deco_mac,
+            timeout_error_retries=timeout_error_retries,
+        )
 
     async def _async_list_clients(self, deco_mac) -> dict:
         await self.async_login_if_needed()
@@ -285,14 +290,13 @@ class TplinkDecoApi:
             client_list = data["result"]["client_list"]
             # client_list is only the connected clients
             _LOGGER.debug("%s client_count=%d", context, len(client_list))
-            _LOGGER.debug("%s client_list=%s", context, client_list)
 
             for client in client_list:
                 client["name"] = decode_name_with_fallback(client["name"])
 
             return client_list
         except Exception as err:
-            _LOGGER.error("%s parse response error=%s, data=%s", context, err, data)
+            _LOGGER.error("%s parse response error=%s", context, err)
             raise err
 
     def _generate_aes_key_and_iv(self):
@@ -319,15 +323,9 @@ class TplinkDecoApi:
             keys = response_json["result"]["password"]
             self._password_rsa_n = int(keys[0], 16)
             self._password_rsa_e = int(keys[1], 16)
-            _LOGGER.debug("password_rsa_n=%s", self._password_rsa_n)
-            _LOGGER.debug("password_rsa_e=%s", self._password_rsa_e)
+            _LOGGER.debug("Fetched password encryption key")
         except Exception as err:
-            _LOGGER.error(
-                "%s parse response error=%s, response_json=%s",
-                context,
-                err,
-                response_json,
-            )
+            _LOGGER.error("%s parse response error=%s", context, err)
             raise err
 
     # Fetch sign RSA keys and seq no
@@ -344,19 +342,12 @@ class TplinkDecoApi:
             auth_result = response_json["result"]
             auth_key = auth_result["key"]
             self._sign_rsa_n = int(auth_key[0], 16)
-            _LOGGER.debug("sign_rsa_n=%s", self._sign_rsa_n)
             self._sign_rsa_e = int(auth_key[1], 16)
-            _LOGGER.debug("sign_rsa_e=%s", self._sign_rsa_e)
 
             self._seq = auth_result["seq"]
-            _LOGGER.debug("seq=%s", self._seq)
+            _LOGGER.debug("Fetched request signing key")
         except Exception as err:
-            _LOGGER.error(
-                "%s parse response error=%s, response_json=%s",
-                context,
-                err,
-                response_json,
-            )
+            _LOGGER.error("%s parse response error=%s", context, err)
             raise err
 
     async def async_login_if_needed(self):
@@ -431,7 +422,7 @@ class TplinkDecoApi:
             # The stok is the admin session token: never log its value.
             _LOGGER.debug("Login successful, received stok")
         except Exception as err:
-            _LOGGER.error("%s parse response error=%s, data=%s", context, err, data)
+            _LOGGER.error("%s parse response error=%s", context, err)
             raise UnexpectedApiException from err
 
         if self._cookie is None:
@@ -456,7 +447,7 @@ class TplinkDecoApi:
                 if len(cookie_parts) == 2:
                     request_cookies[cookie_parts[0]] = cookie_parts[1]
             except Exception:
-                _LOGGER.warning("Could not parse cookie: %s", self._cookie)
+                _LOGGER.warning("Could not parse session cookie")
         try:
             async with async_timeout.timeout(self._timeout_seconds):
                 response = await self._session.post(
@@ -646,22 +637,30 @@ class TplinkDecoApi:
             data_json = json.loads(data_unpadded.decode())
             return data_json
         except Exception as err:
-            _LOGGER.error(
-                "%s decode data error=%s, data=%s",
-                context,
-                err,
-                data,
-            )
+            _LOGGER.error("%s decode data error=%s", context, err)
             raise err
 
-    async def _async_call_with_retry(self, func, *args):
+    async def _async_call_with_retry(
+        self, func, *args, timeout_error_retries: int | None = None
+    ):
         """Call API function with retry logic and request serialization."""
         async with self._request_lock:
-            return await self._async_call_with_retry_inner(func, *args)
+            return await self._async_call_with_retry_inner(
+                func,
+                *args,
+                timeout_error_retries=timeout_error_retries,
+            )
 
-    async def _async_call_with_retry_inner(self, func, *args):
+    async def _async_call_with_retry_inner(
+        self, func, *args, timeout_error_retries: int | None = None
+    ):
         relogin_retried = False
         timeout_retries = 0
+        max_timeout_retries = (
+            self._timeout_error_retries
+            if timeout_error_retries is None
+            else timeout_error_retries
+        )
         while True:
             try:
                 return await func(*args)
@@ -681,13 +680,13 @@ class TplinkDecoApi:
                     err,
                 )
             except TimeoutException as err:
-                if timeout_retries >= self._timeout_error_retries:
+                if timeout_retries >= max_timeout_retries:
                     # Reached max retries
                     raise err
                 timeout_retries += 1
                 _LOGGER.debug(
                     "Retry (%d of %d) timeout error: %s",
                     timeout_retries,
-                    self._timeout_error_retries,
+                    max_timeout_retries,
                     err,
                 )
