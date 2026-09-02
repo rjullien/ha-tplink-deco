@@ -8,7 +8,7 @@
 [![Black](https://img.shields.io/badge/code%20style-black-000000.svg?style=for-the-badge)](https://github.com/psf/black)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://hacs.xyz)
 
-[![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen?style=for-the-badge)](<>)
+[![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen?style=for-the-badge)]()
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.4%2B-blue?style=for-the-badge)](https://www.home-assistant.io/)
 
 ---
