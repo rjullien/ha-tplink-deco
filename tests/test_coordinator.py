@@ -21,6 +21,8 @@ from custom_components.tplink_deco.coordinator import TplinkDecoClientUpdateCoor
 from custom_components.tplink_deco.coordinator import TplinkDecoUpdateCoordinator
 from custom_components.tplink_deco.coordinator import filter_invalid_ip
 from custom_components.tplink_deco.exceptions import LoginInvalidException
+from custom_components.tplink_deco.exceptions import TimeoutException
+from custom_components.tplink_deco.exceptions import UnexpectedApiException
 
 
 def _make_hass() -> MagicMock:
@@ -150,6 +152,69 @@ async def test_deco_coordinator_update_adds_new_deco():
     assert data.master_deco.cpu_usage_raw == 42.0
     assert data.master_deco.mem_usage_raw == 55.0
     hass.loop.call_soon.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_deco_coordinator_survives_performance_failure():
+    """A failing performance endpoint must not invalidate the mesh refresh."""
+    hass = _make_hass()
+    api = MagicMock()
+    api.async_list_devices = AsyncMock(return_value=[_master_deco_dict()])
+    api.async_get_performance = AsyncMock(
+        side_effect=UnexpectedApiException("performance form not supported")
+    )
+
+    coordinator = TplinkDecoUpdateCoordinator(hass, api, _make_config_entry())
+    data = await coordinator._async_update_data()
+
+    # Mesh data is still refreshed.
+    assert len(data.decos) == 1
+    assert data.master_deco is not None
+    assert data.master_deco.online is True
+    # CPU/memory simply stay unknown instead of breaking the update.
+    assert data.master_deco.cpu_usage_raw is None
+    assert data.master_deco.mem_usage_raw is None
+    # The Deco coordinator is still considered healthy.
+    assert coordinator.health.last_successful_update is not None
+    assert coordinator.health.consecutive_failures == 0
+
+
+@pytest.mark.asyncio
+async def test_deco_coordinator_keeps_previous_cpu_on_performance_failure():
+    """Existing CPU/memory values must not be reset when performance fails."""
+    hass = _make_hass()
+    api = MagicMock()
+    api.async_list_devices = AsyncMock(return_value=[_master_deco_dict()])
+    api.async_get_performance = AsyncMock(
+        return_value={"result": {"cpu_usage": 0.40, "mem_usage": 0.50}}
+    )
+
+    coordinator = TplinkDecoUpdateCoordinator(hass, api, _make_config_entry())
+    first = await coordinator._async_update_data()
+    coordinator.data = first
+    assert first.master_deco.cpu_usage_raw == 40.0
+
+    api.async_get_performance = AsyncMock(side_effect=TimeoutException("timed out"))
+    second = await coordinator._async_update_data()
+
+    assert second.master_deco.cpu_usage_raw == 40.0
+    assert second.master_deco.mem_usage_raw == 50.0
+
+
+@pytest.mark.asyncio
+async def test_deco_coordinator_performance_auth_failure_still_propagates():
+    """Auth errors must not be swallowed by the performance guard."""
+    hass = _make_hass()
+    api = MagicMock()
+    api.async_list_devices = AsyncMock(return_value=[_master_deco_dict()])
+    api.async_get_performance = AsyncMock(side_effect=LoginInvalidException(2))
+
+    coordinator = TplinkDecoUpdateCoordinator(hass, api, _make_config_entry())
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator.health.consecutive_failures == 1
 
 
 @pytest.mark.asyncio

@@ -47,6 +47,12 @@ Two types of sensors are available:
 - automations
 - trend analysis
 
+> **Note:** CPU and memory come from the Deco `performance` endpoint, which some
+> firmwares do not expose or fail to answer under load. This is treated as
+> diagnostic-only data: if the call fails, presence detection and the rest of the
+> mesh keep refreshing normally, and the last known CPU/memory values are kept
+> instead of being reset to zero.
+
 ---
 
 ### Polling Control
@@ -102,6 +108,7 @@ Configurable:
 - Start client polling in the background and persist the global fallback after per-node timeouts or 5xx responses (#556, #560, #563)
 - Initialize numerical client-count sensors after the first successful refresh and reliably discover client trackers (#554, #566, #567, #569)
 - Merge upstream CI/deps through `1046923`: setup-python 7.0.0, release-drafter 7.7.0, ruff 0.16.5, pre-commit 4.6.2
+- Fix: a failing CPU/memory (`performance`) endpoint no longer invalidates the whole Deco refresh — the mesh keeps updating and previous CPU/memory values are retained instead of being reset. Authentication errors still trigger the reauth flow
 - Keep fork improvements: request serialization, session anti-churn and logout, extended polling, security audit, resilient entity discovery
 
 ---

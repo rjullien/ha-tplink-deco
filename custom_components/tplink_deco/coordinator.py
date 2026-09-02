@@ -244,9 +244,24 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
             self.api.async_list_devices
         )
 
-        performance_data = await async_call_and_propagate_config_error(
-            self.api.async_get_performance
-        )
+        # CPU/memory is diagnostic-only data: some firmwares do not expose the
+        # performance endpoint at all, and others fail it while under load.
+        # Losing it must not invalidate the mesh refresh, which the device
+        # trackers and every other entity depend on. Auth failures still
+        # propagate so Home Assistant can start the reauth flow.
+        performance_data = None
+        try:
+            performance_data = await async_call_and_propagate_config_error(
+                self.api.async_get_performance
+            )
+        except ConfigEntryAuthFailed:
+            raise
+        except Exception as err:
+            _LOGGER.debug(
+                "Performance endpoint unavailable, "
+                "keeping previous CPU/memory values: %s",
+                err,
+            )
 
         old_decos = self.data.decos
         master_deco = None
@@ -274,8 +289,10 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
                 old_deco.internet_online = False
                 decos[mac] = old_deco
 
-        # Zet globale performance data op de master Deco
-        result = performance_data.get("result", {})
+        # Zet globale performance data op de master Deco.
+        # When the performance call failed, result stays empty so the existing
+        # cpu_usage/mem_usage values are left untouched instead of being reset.
+        result = performance_data.get("result", {}) if performance_data else {}
         if master_deco is not None:
             cpu_raw = result.get("cpu_usage")
             mem_raw = result.get("mem_usage")
