@@ -282,7 +282,8 @@ async def test_client_coordinator_empty_decos_returns_existing():
 
 
 @pytest.mark.asyncio
-async def test_client_coordinator_5xx_fallback(monkeypatch):
+async def test_client_coordinator_5xx_all_nodes_fallback(monkeypatch):
+    """All per-node 5xx failures force a global client query."""
     hass = _make_hass()
     api = MagicMock()
     master = TpLinkDeco("AA:BB:CC:DD:EE:01")
@@ -300,14 +301,16 @@ async def test_client_coordinator_5xx_fallback(monkeypatch):
         },
     )
 
+    err_502 = aiohttp.ClientResponseError(
+        request_info=MagicMock(),
+        history=(),
+        status=502,
+        message="Bad Gateway",
+    )
     api.async_list_clients = AsyncMock(
         side_effect=[
-            aiohttp.ClientResponseError(
-                request_info=MagicMock(),
-                history=(),
-                status=502,
-                message="Bad Gateway",
-            ),
+            err_502,  # master per-node
+            err_502,  # slave per-node
             [{"mac": "11:22:33:44:55:66", "name": "Phone", "ip": "192.168.1.5"}],
         ]
     )
@@ -329,7 +332,119 @@ async def test_client_coordinator_5xx_fallback(monkeypatch):
 
     assert "11:22:33:44:55:66" in data
     assert data["11:22:33:44:55:66"].name == "Phone"
+    assert api.async_list_clients.call_count == 3
+    assert coordinator.client_query_mode == "global_fallback"
+
+
+@pytest.mark.asyncio
+async def test_client_coordinator_partial_node_failure_keeps_mapping(monkeypatch):
+    """A single node 5xx must not force global fallback or wipe peer clients."""
+    hass = _make_hass()
+    api = MagicMock()
+    master = TpLinkDeco("AA:BB:CC:DD:EE:01")
+    master.mac = "AA:BB:CC:DD:EE:01"
+    slave = TpLinkDeco("AA:BB:CC:DD:EE:02")
+    slave.mac = "AA:BB:CC:DD:EE:02"
+
+    deco_coord = MagicMock()
+    deco_coord.paused = False
+    deco_coord.data = TpLinkDecoData(
+        master_deco=master,
+        decos={
+            master.mac: master,
+            slave.mac: slave,
+        },
+    )
+
+    old_slave_client = TpLinkDecoClient("AA:11:22:33:44:55")
+    old_slave_client.deco_mac = slave.mac
+    old_slave_client.online = True
+    old_slave_client.last_activity = datetime(2026, 7, 11, 11, 59, tzinfo=timezone.utc)
+
+    err_502 = aiohttp.ClientResponseError(
+        request_info=MagicMock(),
+        history=(),
+        status=502,
+        message="Bad Gateway",
+    )
+    api.async_list_clients = AsyncMock(
+        side_effect=[
+            [{"mac": "11:22:33:44:55:66", "name": "Phone", "ip": "192.168.1.5"}],
+            err_502,  # slave times out / 5xx
+        ]
+    )
+
+    fixed_now = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        "custom_components.tplink_deco.coordinator.dt_util.utcnow",
+        lambda: fixed_now,
+    )
+
+    coordinator = TplinkDecoClientUpdateCoordinator(
+        hass,
+        api,
+        _make_config_entry(),
+        deco_coord,
+        consider_home_seconds=180,
+        data={"AA:11:22:33:44:55": old_slave_client},
+    )
+    data = await coordinator._async_update_data()
+
+    assert coordinator.client_query_mode == "per_node"
+    assert data["11:22:33:44:55:66"].deco_mac == master.mac
+    # Client on the failed slave retains last-known online status / mapping.
+    assert data["AA:11:22:33:44:55"].online is True
+    assert data["AA:11:22:33:44:55"].deco_mac == slave.mac
     assert api.async_list_clients.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_client_coordinator_recovers_from_global_fallback(monkeypatch):
+    """After the probe interval, a successful per-node cycle leaves global mode."""
+    hass = _make_hass()
+    api = MagicMock()
+    master = TpLinkDeco("AA:BB:CC:DD:EE:01")
+    master.mac = "AA:BB:CC:DD:EE:01"
+
+    deco_coord = MagicMock()
+    deco_coord.paused = False
+    deco_coord.data = TpLinkDecoData(master_deco=master, decos={master.mac: master})
+
+    err_502 = aiohttp.ClientResponseError(
+        request_info=MagicMock(),
+        history=(),
+        status=502,
+        message="Bad Gateway",
+    )
+    api.async_list_clients = AsyncMock(
+        side_effect=[
+            err_502,  # first cycle: per-node fails
+            [{"mac": "11:22:33:44:55:66", "name": "Phone"}],  # global fallback
+            [{"mac": "11:22:33:44:55:66", "name": "Phone"}],  # later probe succeeds
+        ]
+    )
+
+    fixed_now = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        "custom_components.tplink_deco.coordinator.dt_util.utcnow",
+        lambda: fixed_now,
+    )
+
+    coordinator = TplinkDecoClientUpdateCoordinator(
+        hass,
+        api,
+        _make_config_entry(),
+        deco_coord,
+        consider_home_seconds=180,
+    )
+    await coordinator._async_update_data()
+    assert coordinator.client_query_mode == "global_fallback"
+
+    # Force probe window open (GLOBAL_FALLBACK_PROBE_INTERVAL_SECONDS = 300).
+    coordinator._next_per_node_probe = 0.0
+    await coordinator._async_update_data()
+    assert coordinator.client_query_mode == "per_node"
+    assert api.async_list_clients.call_count == 3
 
 
 @pytest.mark.asyncio

@@ -96,11 +96,20 @@ Configurable:
 
 ## 📝 Changelog
 
-> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.10.0** (commit `800a88d`, 2026-08-27). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
+> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.10.2** (commit `3607198`, 2026-09-10). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
 >
-> **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.10.0.0` = upstream 3.10.0, fork rev 0).
+> **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.10.2.1` = upstream 3.10.2, fork rev 1).
 >
-> **HACS depuis v3.14.x :** `3.10.0.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
+> **HACS depuis v3.14.x :** `3.10.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
+
+### v3.10.2.1
+
+- Sync upstream v3.10.1: migrate deprecated `via_device` → `via_device_id` for HA 2026.9 warnings / 2027.8 removal (#579)
+- Sync upstream v3.10.2: recover per-node client mapping after transient failures — a single-node timeout/5xx no longer forces permanent global fallback; periodic probe restores accurate client-to-Deco mapping (#582)
+- Keep fork presence caching / `consider_home` for clients whose Deco answered; retain last-known status for clients on Decos that failed this cycle
+- Keep fork improvements: request serialization, session anti-churn and logout, extended polling (180/240/300s), security audit, resilient `performance` endpoint, health publish on consecutive failures, config-flow device+client validation
+
+---
 
 ### v3.10.0.0
 
