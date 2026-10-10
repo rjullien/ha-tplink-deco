@@ -6,8 +6,8 @@ import json
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 
-import aiohttp
 from Crypto.PublicKey import RSA
+import aiohttp
 import pytest
 
 from custom_components.tplink_deco.api import TplinkDecoApi
@@ -70,9 +70,7 @@ async def test_async_post_outer_session_decodes_and_rewrites_url(api, mock_sessi
     inner = {"error_code": 0, "result": {"ok": True}}
     response = make_response({})
     response.text = AsyncMock(
-        return_value=api._encode_outer_payload(json.dumps(inner)).split(
-            "&data=", 1
-        )[1]
+        return_value=api._encode_outer_payload(json.dumps(inner)).split("&data=", 1)[1]
     )
     mock_session.post.return_value = response
 
@@ -88,9 +86,7 @@ async def test_async_post_outer_session_decodes_and_rewrites_url(api, mock_sessi
     assert kwargs["params"]["id"] == "outer-id"
     # The ;stok= prefix is stripped for the outer-session endpoint
     assert kwargs["params"]["form"] == "client_list"
-    assert mock_session.post.call_args.args[0] == (
-        f"{api._host}/admin/client"
-    )
+    assert mock_session.post.call_args.args[0] == (f"{api._host}/admin/client")
 
 
 @pytest.mark.asyncio
@@ -177,18 +173,14 @@ async def test_async_login_no_outer_fallback_on_other_errors(api):
 
 
 @pytest.mark.asyncio
-async def test_async_post_payload_error_is_transient_and_keeps_auth(
-    api, mock_session
-):
+async def test_async_post_payload_error_is_transient_and_keeps_auth(api, mock_session):
     api._stok = "token"
     api._cookie = "sysauth=abc"
     api._seq = 1
     mock_session.post.side_effect = aiohttp.ClientPayloadError("truncated")
 
     with pytest.raises(TransientConnectionException):
-        await api._async_post(
-            "List Devices", f"{api._host}/path", params={}, data="x"
-        )
+        await api._async_post("List Devices", f"{api._host}/path", params={}, data="x")
 
     assert api._stok == "token"
     assert api._cookie == "sysauth=abc"
@@ -204,9 +196,7 @@ async def test_async_post_server_disconnect_is_transient_and_clears_auth(
     mock_session.post.side_effect = aiohttp.ServerDisconnectedError()
 
     with pytest.raises(TransientConnectionException):
-        await api._async_post(
-            "List Devices", f"{api._host}/path", params={}, data="x"
-        )
+        await api._async_post("List Devices", f"{api._host}/path", params={}, data="x")
 
     assert api._stok is None
     assert api._cookie is None
