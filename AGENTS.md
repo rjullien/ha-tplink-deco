@@ -22,6 +22,14 @@ bash skills/ha-tplink-deco-release/scripts/validate-release.sh <VERSION>
 
 **Before merging any upstream change:** read [docs/FORK-SAFEGUARDS.md](docs/FORK-SAFEGUARDS.md). It lists every fork-specific behaviour (session anti-churn, request lock, retry backoff, presence retention, resilient `performance` endpoint, health sensors used by the owner's HA) with the file and the test that protects it, plus the sync checklist. Removing one is a regression even if CI is green. Add any new fork safeguard there in the same PR.
 
+## Upstream sync — record git ancestry (day 1)
+
+The owner's HA (`ForkUpstreamMonitor`) uses GitHub compare `upstream-tag...main`, which counts commits by **ancestry, not content**. If the upstream tag is not an ancestor of `main`, it keeps alerting "N commit(s) behind" even when all the code is ported.
+
+1. On the sync branch, `git merge vX.Y.Z` (upstream tag). If you ported by cherry-pick or by hand instead, finish with `git merge -s ours vX.Y.Z` (no file change, records ancestry).
+2. Merge the PR with **Create a merge commit** (`gh pr merge --merge`) or a fast-forward push — **never squash or rebase-merge** a sync PR: it drops the upstream parent (#20 squash → still 15 behind, fixed by #21).
+3. Done only when `git fetch upstream --tags && git rev-list --left-right --count vX.Y.Z...origin/main` prints `0 <ahead>`.
+
 ## Versioning
 
 Fork uses **4-part** versions: `X.Y.Z.N` (`X.Y.Z` = upstream base, `N` = fork revision). See the release skill for details.

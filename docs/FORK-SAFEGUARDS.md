@@ -54,9 +54,10 @@ Le firmware Deco a peu de sessions admin. Chaque re-login en crée une ; trop de
 
 ## Checklist d'un sync upstream
 
-1. `git fetch upstream --tags`, merge du tag upstream sur une branche `devin/<ts>-sync-upstream-vX.Y.Z`.
+1. `git fetch upstream --tags`, merge du tag upstream sur une branche `devin/<ts>-sync-upstream-vX.Y.Z`. Si le contenu est porté à la main / par cherry-pick : terminer par `git merge -s ours vX.Y.Z` pour enregistrer l'ascendance.
 2. Résoudre chaque conflit en relisant les tableaux A–D ; relire aussi le diff des fichiers auto-mergés.
 3. `grep -n "clear_auth()" custom_components/tplink_deco/api.py` : chaque appel doit correspondre à A3/A4/A5/A6 (relogin, 401/403/5xx, logout, login invalide). Tout autre appel = régression A.
 4. Tous les tests listés ci-dessus doivent exister et passer (`pytest -q`, couverture ≥ 75 %) ; `pre-commit run --all-files`.
 5. Version `X.Y.Z.0`, changelog README (section « Merge notes » : ce qui a été adapté pour garder les garde-fous), bloc fork status, `validate-release.sh`.
-6. Un nouveau garde-fou fork ? L'ajouter ici **dans la même PR**, avec son test.
+6. Merger la PR en **merge commit** (`gh pr merge --merge`), **jamais squash/rebase** (sinon le tag upstream n'est plus ancêtre de `main` et le CRM alerte « behind »). Vérifier : `git rev-list --left-right --count vX.Y.Z...origin/main` → `0 <ahead>`.
+7. Un nouveau garde-fou fork ? L'ajouter ici **dans la même PR**, avec son test.

@@ -212,7 +212,8 @@ Commit, push, open PR, wait for CI.
 # If PR is still a draft:
 gh pr ready <PR_NUMBER> --repo rjullien/ha-tplink-deco
 
-# Squash merge (preferred — keeps main history clean):
+# Squash merge (preferred for fork-only PRs — keeps main history clean).
+# Upstream sync PRs: use --merge instead, NEVER --squash (see Upstream alignment releases):
 gh pr merge <PR_NUMBER> --repo rjullien/ha-tplink-deco \
   --squash \
   --subject "feat: short summary (#<PR_NUMBER>)" \
@@ -304,6 +305,7 @@ When syncing with amosyuen/ha-tplink-deco:
 4. Set version `X.Y.Z.0` where `X.Y.Z` = upstream release (e.g. upstream v3.9.1 → fork `3.9.1.0`)
 5. Document upstream commit hash in README fork status
 6. Write changelog bullets distinguishing upstream picks vs fork-only code preserved
+7. Record ancestry: the upstream tag must be an ancestor of `main` (GitHub compare / `ForkUpstreamMonitor` count by ancestry). Merge the tag on the branch (`git merge vX.Y.Z`, or `git merge -s ours vX.Y.Z` after a manual port) and merge the PR with `gh pr merge --merge` — **never `--squash`**. Check `git rev-list --left-right --count vX.Y.Z...origin/main` → `0 <ahead>` before tagging.
 
 ## Example (v3.9.1.0 — reference release)
 
