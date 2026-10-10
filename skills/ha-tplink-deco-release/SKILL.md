@@ -294,6 +294,8 @@ Tell the user how to update in HA:
 
 ## Upstream alignment releases
 
+> **Mandatory:** resolve conflicts and review auto-merged files against [docs/FORK-SAFEGUARDS.md](../../docs/FORK-SAFEGUARDS.md) and run its checklist before tagging.
+
 When syncing with amosyuen/ha-tplink-deco:
 
 1. Fetch upstream: `git fetch upstream --tags`

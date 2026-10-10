@@ -96,11 +96,23 @@ Configurable:
 
 ## 📝 Changelog
 
-> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.10.2** (commit `3607198`, 2026-09-10). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
+> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.10.5** (commit `04cf73c`, 2026-10-08). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
 >
-> **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.10.2.1` = upstream 3.10.2, fork rev 1).
+> **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.10.5.0` = upstream 3.10.5, fork rev 0).
 >
 > **HACS depuis v3.14.x :** `3.10.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
+
+### v3.10.5.0
+
+- Sync upstream v3.10.3: legacy encrypted local-web (outer) session fallback for Deco S7 — used only after the LuCI keys endpoint returns HTTP 401 (#589)
+- Sync upstream v3.10.4: retry transient API responses (`ClientPayloadError`, `ServerDisconnectedError`) via `TransientConnectionException` without dropping client state (#590)
+- Sync upstream v3.10.5: fix client counts and restore-state compatibility (#597)
+- 2 s backoff before retrying a dropped connection (`ClientPayloadError`/`ServerDisconnectedError`), so a struggling Deco is not hit again immediately; session is kept (no re-login).
+- Merge upstream CI/deps: ruff 0.16.10, flake8 7.4.1, release-drafter 7.9.0
+- Merge notes: fork keeps `kilobits_to_kilobytes` (now hardened with upstream `coerce_float`), keep-session policy on `ClientConnectorError` (no re-login churn), RSA-key clearing + `async_logout` (now also clears the outer session), `EmptyDataException`/`check_data_error_code` on every response (outer-session responses included), and the resilient `performance` endpoint
+- Keep fork improvements: request serialization, session anti-churn and logout, extended polling (180/240/300s), security audit, health publish on consecutive failures, config-flow device+client validation
+
+---
 
 ### v3.10.2.1
 
@@ -501,6 +513,7 @@ message: "device_tracker.amos_phone_wifi connected to main 5G through Guest Room
 - Deco P9
 - Deco PX50
 - Deco S4
+- Deco S7 (1.3.0 Build 20220609 Rel. 64814)
 - Deco X20
 - Deco X50
 - Deco X60
@@ -511,9 +524,9 @@ message: "device_tracker.amos_phone_wifi connected to main 5G through Guest Room
 - Mercusys Halo H70X
 - Mercusys Halo H80X
 
-## Not Working Devices
-
-- Deco S7 (1.3.0 Build 20220609 Rel. 64814)
+The Deco S7 firmware listed above uses a legacy encrypted local-web session over
+HTTP. The integration detects and handles this authentication and request format,
+including numeric values returned as strings by the legacy API.
 
 ## Known Issues
 

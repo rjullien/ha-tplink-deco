@@ -18,6 +18,10 @@ Validator script:
 bash skills/ha-tplink-deco-release/scripts/validate-release.sh <VERSION>
 ```
 
+## Fork safeguards (upstream syncs)
+
+**Before merging any upstream change:** read [docs/FORK-SAFEGUARDS.md](docs/FORK-SAFEGUARDS.md). It lists every fork-specific behaviour (session anti-churn, request lock, retry backoff, presence retention, resilient `performance` endpoint, health sensors used by the owner's HA) with the file and the test that protects it, plus the sync checklist. Removing one is a regression even if CI is green. Add any new fork safeguard there in the same PR.
+
 ## Versioning
 
 Fork uses **4-part** versions: `X.Y.Z.N` (`X.Y.Z` = upstream base, `N` = fork revision). See the release skill for details.
