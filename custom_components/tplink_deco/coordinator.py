@@ -27,6 +27,7 @@ from .const import SIGNAL_DECO_ADDED
 from .exceptions import LoginForbiddenException
 from .exceptions import LoginInvalidException
 from .exceptions import TimeoutException
+from .exceptions import TransientConnectionException
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 GLOBAL_FALLBACK_PROBE_INTERVAL_SECONDS = 300
@@ -57,9 +58,20 @@ class CoordinatorHealth:
             self.timeout_count += 1
 
 
+def coerce_float(value):
+    """Coerce numeric values returned as strings by legacy firmware."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def kilobits_to_kilobytes(kilobits_count):
     """Convert kilobits to kilobytes (the Deco API reports speeds in kbit/s)."""
-    return kilobits_count / 8 if kilobits_count is not None else kilobits_count
+    numeric_value = coerce_float(kilobits_count)
+    return numeric_value / 8 if numeric_value is not None else None
 
 
 def filter_invalid_ip(ip_address):
@@ -298,8 +310,9 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
             cpu_raw = result.get("cpu_usage")
             mem_raw = result.get("mem_usage")
 
-            if cpu_raw is not None:
-                cpu_percent = cpu_raw * 100
+            cpu_value = coerce_float(cpu_raw)
+            if cpu_value is not None:
+                cpu_percent = cpu_value * 100
                 master_deco.cpu_usage_raw = round(cpu_percent, 1)
 
                 if master_deco.cpu_usage is not None:
@@ -309,8 +322,9 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
                 else:
                     master_deco.cpu_usage = round(cpu_percent, 1)
 
-            if mem_raw is not None:
-                mem_percent = mem_raw * 100
+            mem_value = coerce_float(mem_raw)
+            if mem_value is not None:
+                mem_percent = mem_value * 100
                 master_deco.mem_usage_raw = round(mem_percent, 1)
 
                 if master_deco.mem_usage is not None:
@@ -406,6 +420,13 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
                 failed_deco_macs.add(deco_mac)
                 _LOGGER.debug(
                     "Per-node client_list timed out for %s: %s", deco_mac, err
+                )
+            except TransientConnectionException as err:
+                failed_deco_macs.add(deco_mac)
+                _LOGGER.debug(
+                    "Per-node client_list connection failed for %s after retries: %s",
+                    deco_mac,
+                    err,
                 )
             else:
                 responses.append((deco_mac, response))
