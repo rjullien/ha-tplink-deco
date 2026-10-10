@@ -35,6 +35,7 @@ MIN_AES_KEY = 10 ** (AES_KEY_BYTES - 1)
 MAX_AES_KEY = (10**AES_KEY_BYTES) - 1
 
 PKCS1_v1_5_HEADER_BYTES = 11
+TRANSIENT_RETRY_DELAY_SECONDS = 2
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 LEGACY_ERROR_DECODING_PATTERN = re.compile(r"^<Error Decoding (.*)>$")
@@ -920,3 +921,4 @@ class TplinkDecoApi:
                     max_transport_retries,
                     err,
                 )
+                await asyncio.sleep(TRANSIENT_RETRY_DELAY_SECONDS)

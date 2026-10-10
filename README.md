@@ -107,6 +107,7 @@ Configurable:
 - Sync upstream v3.10.3: legacy encrypted local-web (outer) session fallback for Deco S7 — used only after the LuCI keys endpoint returns HTTP 401 (#589)
 - Sync upstream v3.10.4: retry transient API responses (`ClientPayloadError`, `ServerDisconnectedError`) via `TransientConnectionException` without dropping client state (#590)
 - Sync upstream v3.10.5: fix client counts and restore-state compatibility (#597)
+- 2 s backoff before retrying a dropped connection (`ClientPayloadError`/`ServerDisconnectedError`), so a struggling Deco is not hit again immediately; session is kept (no re-login).
 - Merge upstream CI/deps: ruff 0.16.10, flake8 7.4.1, release-drafter 7.9.0
 - Merge notes: fork keeps `kilobits_to_kilobytes` (now hardened with upstream `coerce_float`), keep-session policy on `ClientConnectorError` (no re-login churn), RSA-key clearing + `async_logout` (now also clears the outer session), `EmptyDataException`/`check_data_error_code` on every response (outer-session responses included), and the resilient `performance` endpoint
 - Keep fork improvements: request serialization, session anti-churn and logout, extended polling (180/240/300s), security audit, health publish on consecutive failures, config-flow device+client validation

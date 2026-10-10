@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
+from unittest.mock import patch
 
 from Crypto.PublicKey import RSA
 import aiohttp
@@ -209,14 +210,19 @@ async def test_transient_connection_error_is_retried(api, mock_session):
     async def flaky():
         nonlocal calls
         calls += 1
-        if calls < 3:
+        if calls < 2:
             raise TransientConnectionException("boom")
         return {"result": "ok"}
 
     api._timeout_error_retries = 3
-    result = await api._async_call_with_retry(flaky)
+    with patch(
+        "custom_components.tplink_deco.api.asyncio.sleep", new_callable=AsyncMock
+    ) as sleep_mock:
+        result = await api._async_call_with_retry(flaky)
+
     assert result == {"result": "ok"}
-    assert calls == 3
+    assert calls == 2
+    sleep_mock.assert_awaited_once_with(2)
 
 
 @pytest.mark.asyncio
@@ -224,6 +230,10 @@ async def test_transient_connection_error_exhausts_retries(api, mock_session):
     async def always_fails():
         raise TransientConnectionException("boom")
 
-    api._timeout_error_retries = 2
-    with pytest.raises(TransientConnectionException):
-        await api._async_call_with_retry(always_fails)
+    with patch(
+        "custom_components.tplink_deco.api.asyncio.sleep", new_callable=AsyncMock
+    ) as sleep_mock:
+        with pytest.raises(TransientConnectionException):
+            await api._async_call_with_retry(always_fails)
+
+    assert sleep_mock.await_count == api._timeout_error_retries
