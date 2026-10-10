@@ -464,14 +464,6 @@ class TplinkDecoApi:
                 "Login response did not have a Set-Cookie header"
             )
 
-        # Login success
-        self._auth_errors = 0
-        _LOGGER.debug("Login successful")
-
-        # Login success
-        self._auth_errors = 0
-        _LOGGER.debug("Login successful")
-
     async def _async_login_outer_session(self):
         """Log in through the legacy encrypted local-web session."""
         if self._outer_id is None:
@@ -740,8 +732,7 @@ class TplinkDecoApi:
                 )
             raise err
         except (aiohttp.ClientPayloadError, aiohttp.ServerDisconnectedError) as err:
-            if isinstance(err, aiohttp.ServerDisconnectedError):
-                self.clear_auth()
+            # Keep session: a dropped connection does not invalidate it (fork anti-churn).
             _LOGGER.debug(
                 "%s transient connection error: %s",
                 context,

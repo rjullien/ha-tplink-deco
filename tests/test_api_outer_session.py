@@ -187,7 +187,7 @@ async def test_async_post_payload_error_is_transient_and_keeps_auth(api, mock_se
 
 
 @pytest.mark.asyncio
-async def test_async_post_server_disconnect_is_transient_and_clears_auth(
+async def test_async_post_server_disconnect_is_transient_and_keeps_auth(
     api, mock_session
 ):
     api._stok = "token"
@@ -198,8 +198,8 @@ async def test_async_post_server_disconnect_is_transient_and_clears_auth(
     with pytest.raises(TransientConnectionException):
         await api._async_post("List Devices", f"{api._host}/path", params={}, data="x")
 
-    assert api._stok is None
-    assert api._cookie is None
+    assert api._stok == "token"
+    assert api._cookie == "sysauth=abc"
 
 
 @pytest.mark.asyncio
