@@ -1,5 +1,7 @@
 # Upstream readiness analysis for FORK-SAFEGUARDS.md
 
+**Reviewed with Laurine on Monday 12 October 2026 morning.**
+
 @cursor Please update `docs/FORK-SAFEGUARDS.md` in this same branch to enrich it with the analysis below. Do not change the safeguard definitions themselves yet; add a new section (e.g. "## Upstream readiness") that records the conclusions. The goal is to decide, item by item, which fork safeguards are worth proposing upstream to amosyuen/ha-tplink-deco and which are fork-specific.
 
 ## Context
