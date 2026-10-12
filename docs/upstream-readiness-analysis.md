@@ -42,6 +42,20 @@ This fork (`rjullien/ha-tplink-deco`) runs on a real home mesh: 1 master XE75Pro
 - **D5** (http→https upgrade on 307 redirect): universal, works around aiohttp ≥ 3.14 cookie drop.
 - **D6** (never log sysauth/stok, redacted diagnostics): universal security.
 
+## Which safe items merit an issue before the PR
+
+Not every safe item needs an issue. Two stand out as behavior-changing enough that discussing first is wise:
+
+### A5 — async_logout on unload under the lock with signed payload
+
+**Why an issue first:** this is a behavior change to session lifecycle (the integration starts actively logging out), similar to the Livebox case where cyr-ius replaced the integration-side approach with a library-level one. An issue lets the maintainer weigh in on whether logout belongs in the integration or should be pushed to a lower layer, before code is written.
+
+### D5 — http→https permanent upgrade on 307 redirect
+
+**Why an issue first:** this is a workaround for an aiohttp ≥ 3.14 bug (cookie dropped on redirect). It may interact with upstream's own HTTP/HTTPS handling or with future aiohttp fixes, so confirming the approach with the maintainer avoids a PR that gets bikeshedded or rejected for touching connection logic.
+
+All other safe items (A1–A4, A6, B1, B2, C1–C3, D1–D3, D6) are pure fixes with clear universal value: open the PR directly.
+
 ## Suggested next step
 
-After updating this file, open a draft PR to amosyuen/ha-tplink-deco proposing B3 (reframed as scaling) and the A/C/D items marked safe, while explicitly keeping B4, C4, and D4 as fork-only for now.
+After updating this file, open a draft PR to amosyuen/ha-tplink-deco proposing B3 (reframed as scaling) and the A/C/D items marked safe, while explicitly keeping B4, C4, and D4 as fork-only for now. For A5 and D5, open issues first to validate the approach.
