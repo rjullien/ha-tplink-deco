@@ -102,6 +102,13 @@ Configurable:
 >
 > **HACS depuis v3.14.x :** `3.10.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
 
+### v3.10.5.1
+
+- Fix: recover a stale legacy outer session (Deco S7) after a Deco reboot — an empty or undecodable encrypted response now clears auth so the existing retry logs in once and recovers, instead of failing every poll (follow-up to upstream amosyuen/ha-tplink-deco#598)
+- Add `tests/test_api_transport_errors.py` covering the reboot recovery paths (empty body, undecodable body, HTTP 401)
+
+---
+
 ### v3.10.5.0
 
 - Sync upstream v3.10.3: legacy encrypted local-web (outer) session fallback for Deco S7 — used only after the LuCI keys endpoint returns HTTP 401 (#589)

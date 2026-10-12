@@ -12,6 +12,7 @@ import aiohttp
 import pytest
 
 from custom_components.tplink_deco.api import TplinkDecoApi
+from custom_components.tplink_deco.exceptions import EmptyDataException
 from custom_components.tplink_deco.exceptions import TransientConnectionException
 from custom_components.tplink_deco.exceptions import UnexpectedApiException
 from tests.helpers import make_response
@@ -97,7 +98,7 @@ async def test_async_post_outer_session_empty_response_raises(api, mock_session)
     response.text = AsyncMock(return_value="")
     mock_session.post.return_value = response
 
-    with pytest.raises(UnexpectedApiException):
+    with pytest.raises(EmptyDataException):
         await api._async_post(
             "List Clients",
             f"{api._host}/cgi-bin/luci/;stok=stok/admin/client",
