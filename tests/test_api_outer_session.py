@@ -14,7 +14,6 @@ import pytest
 from custom_components.tplink_deco.api import TplinkDecoApi
 from custom_components.tplink_deco.exceptions import EmptyDataException
 from custom_components.tplink_deco.exceptions import TransientConnectionException
-from custom_components.tplink_deco.exceptions import UnexpectedApiException
 from tests.helpers import make_response
 
 
