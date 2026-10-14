@@ -29,6 +29,15 @@ This integration provides local polling control and diagnostics for TP-Link Deco
 - Coordinator health (last successful update, response time, timeouts, query mode,
   and last error)
 
+### Session recovery
+
+- Keeps the current Deco session during temporary connection drops to avoid
+  unnecessary logins and session exhaustion.
+- Automatically establishes a new session when the Deco rejects a stale session
+  with HTTP 401/403.
+- Recovers encrypted legacy sessions when a rebooted Deco returns an empty or
+  invalid encrypted response.
+
 ### CPU / Memory sensors
 
 Two types of sensors are available:
@@ -96,11 +105,19 @@ Configurable:
 
 ## 📝 Changelog
 
-> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.10.5** (commit `04cf73c`, 2026-10-08). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
+> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.11.0** (commit `cfb2a2a`, 2026-10-14). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
 >
 > **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.10.5.0` = upstream 3.10.5, fork rev 0).
 >
 > **HACS depuis v3.14.x :** `3.10.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
+
+### v3.11.0.0
+
+- Sync upstream v3.11.0: optional client device linking to network devices (#605), backhaul BSSIDs (#595), client tracker devices named after the client (#600)
+- Sync upstream: our own PR amosyuen#598 merged — session kept on `ServerDisconnectedError`/`ClientConnectorError` + stale outer-session recovery after Deco reboot
+- Merge notes: kept fork anti-churn comments in `api.py` (same behaviour upstream), combined fork migration guard with upstream config-entry version 7 (`link_client_devices`), dependabot bumps (ruff 0.17.0, black 26.10.1, release-drafter 7.10.0)
+
+---
 
 ### v3.10.5.1
 
@@ -315,6 +332,8 @@ This integration is a local polling integration that logs into the admin web UI 
 
 Device trackers are added for both decos and clients. The device tracker state marks whether the device is connected to the deco. If a device is not present, the previous values for attributes are saved except for `down_kilobytes_per_s` and `up_kilobytes_per_s`.
 
+By default, Home Assistant may link a client tracker to a device from another integration when both report the same MAC address. Disable **Link client trackers to devices by MAC address** in the integration options to prevent this. The tracker keeps its entity ID and exposes the MAC as a state attribute, but no longer participates in MAC-based device matching or DHCP discovery. Existing client devices can then be removed manually; Deco devices remain protected.
+
 #### Common Attributes
 
 | Attribute       | Example Values (comma separated) |
@@ -336,19 +355,21 @@ Device trackers are added for both decos and clients. The device tracker state m
 
 #### Deco Attributes
 
-| Attribute       | Example Values (comma separated) |
-| --------------- | -------------------------------- |
-| hw_version      | 2.0                              |
-| sw_version      | 1.5.1 Build 20210204 Rel. 50164  |
-| device_model    | x60                              |
-| internet_online | false, true                      |
-| master          | false, true                      |
-| bssid_band2_4   | A1:B2:C3:D4:E5:F6                |
-| bssid_band5     | A1:B2:C3:D4:E5:F6                |
-| signal_band2_4  | 3                                |
-| signal_band2_4  | 4                                |
-| deco_device     | living_room                      |
-| deco_mac        | 1A-B2-C3-4D-56-EF                |
+| Attribute              | Example Values (comma separated) |
+| ---------------------- | -------------------------------- |
+| hw_version             | 2.0                              |
+| sw_version             | 1.5.1 Build 20210204 Rel. 50164  |
+| device_model           | x60                              |
+| internet_online        | false, true                      |
+| master                 | false, true                      |
+| bssid_band2_4          | A1:B2:C3:D4:E5:F6                |
+| bssid_band5            | A1:B2:C3:D4:E5:F6                |
+| backhaul_bssid_band2_4 | A1:B2:C3:D4:E5:F6                |
+| backhaul_bssid_band5   | A1:B2:C3:D4:E5:F6                |
+| signal_band2_4         | 3                                |
+| signal_band2_4         | 4                                |
+| deco_device            | living_room                      |
+| deco_mac               | 1A-B2-C3-4D-56-EF                |
 
 Note: `deco_device` and `deco_mac` will only be set for non-master decos.
 
