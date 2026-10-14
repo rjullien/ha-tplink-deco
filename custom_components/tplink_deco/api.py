@@ -711,6 +711,13 @@ class TplinkDecoApi:
                     response_json = await response.json(content_type=None)
                 if not isinstance(response_json, dict):
                     raise EmptyDataException(f"{context} response is not a JSON object")
+                if response_json.get("error_code") == -5002:
+                    # Session expired mid-use: same as an empty response,
+                    # clear auth so the retry logs in again once.
+                    self.clear_auth()
+                    raise EmptyDataException(
+                        f"{context} session expired, error_code=-5002"
+                    )
                 # Reuse check_data_error_code so a top-level
                 # error_code="timeout" raises TimeoutException (and is
                 # retried) instead of an UnexpectedApiException.
