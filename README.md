@@ -116,6 +116,7 @@ Configurable:
 - Sync upstream v3.11.0: optional client device linking to network devices (#605), backhaul BSSIDs (#595), client tracker devices named after the client (#600)
 - Sync upstream: our own PR amosyuen#598 merged — session kept on `ServerDisconnectedError`/`ClientConnectorError` + stale outer-session recovery after Deco reboot
 - Merge notes: kept fork anti-churn comments in `api.py` (same behaviour upstream), combined fork migration guard with upstream config-entry version 7 (`link_client_devices`), dependabot bumps (ruff 0.17.0, black 26.10.1, release-drafter 7.10.0)
+- New fork safeguard A7: authenticated `-5002` (session expired mid-use) → `clear_auth` + `EmptyDataException`, one re-login via existing retry — closes the gap dkwolf1 flagged on #598; upstream PR to follow
 
 ---
 
