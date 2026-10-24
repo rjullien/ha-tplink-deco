@@ -11,6 +11,7 @@ from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.components.sensor.const import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
+from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT
 from homeassistant.const import UnitOfDataRate
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
@@ -65,6 +66,52 @@ DIAGNOSTIC_SENSOR_DESCRIPTIONS: tuple[TplinkDecoDiagnosticSensorDescription, ...
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda deco: deco.bssid_band5,
+    ),
+    TplinkDecoDiagnosticSensorDescription(
+        key="signal_strength_2_4ghz",
+        name="Signal strength 2.4 GHz",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
+        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda deco: deco.signal_strength_band2_4,
+    ),
+    TplinkDecoDiagnosticSensorDescription(
+        key="signal_strength_5ghz",
+        name="Signal strength 5 GHz",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
+        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda deco: deco.signal_strength_band5,
+    ),
+    TplinkDecoDiagnosticSensorDescription(
+        key="signal_strength_6ghz",
+        name="Signal strength 6 GHz",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda deco: deco.signal_strength_band6,
+    ),
+    TplinkDecoDiagnosticSensorDescription(
+        key="internet_status_message",
+        name="Internet status message",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
+        value_fn=lambda deco: deco.internet_status_message,
+    ),
+    TplinkDecoDiagnosticSensorDescription(
+        key="wired_port_speed_min",
+        name="Minimum wired port speed",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
+        native_unit_of_measurement=UnitOfDataRate.MEGABITS_PER_SECOND,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda deco: deco.wired_port_speed_min,
     ),
     TplinkDecoDiagnosticSensorDescription(
         key="connection_type",

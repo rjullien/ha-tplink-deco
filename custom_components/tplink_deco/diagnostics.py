@@ -23,11 +23,24 @@ TO_REDACT = {
     CONF_PASSWORD,
     CONF_USERNAME,
     "access_token",
+    "access_host",
     "cookie",
+    "default_ssid",
+    "device_id",
+    "device_ip",
+    "hw_id",
+    "ip",
+    "mac",
+    "oem_id",
+    "owner_id",
+    "parent_device_id",
+    "parent_mac",
+    "previous",
     "refresh_token",
     "secret",
     "session",
     "session_id",
+    "space_id",
     "stok",
     "token",
 }
@@ -57,25 +70,44 @@ def _coordinator_diagnostics(coordinator) -> dict[str, Any]:
 
 def _deco_diagnostics(deco: TpLinkDeco, identifier: str) -> dict[str, Any]:
     """Return diagnostics for a Deco without personal identifiers."""
-    return {
-        "id": identifier,
-        "device_model": deco.device_model,
-        "hardware_version": deco.hw_version,
-        "software_version": deco.sw_version,
-        "online": deco.online,
-        "internet_online": deco.internet_online,
-        "master": deco.master,
-        "connection_type": deco.connection_type,
-        "interface": deco.interface,
-        "signal_2_4_ghz": deco.signal_band2_4,
-        "signal_5_ghz": deco.signal_band5,
-        "backhaul_speed": deco.backhaul_speed,
-        "backhaul_max_speed": deco.backhaul_max_speed,
-        "cpu_usage": deco.cpu_usage,
-        "cpu_usage_raw": deco.cpu_usage_raw,
-        "memory_usage": deco.mem_usage,
-        "memory_usage_raw": deco.mem_usage_raw,
-    }
+    return async_redact_data(
+        {
+            "id": identifier,
+            "device_model": deco.device_model,
+            "hardware_version": deco.hw_version,
+            "software_version": deco.sw_version,
+            "online": deco.online,
+            "internet_online": deco.internet_online,
+            "master": deco.master,
+            "connection_type": deco.connection_type,
+            "interface": deco.interface,
+            "signal_2_4_ghz": deco.signal_band2_4,
+            "signal_5_ghz": deco.signal_band5,
+            "signal_6_ghz": deco.signal_band6,
+            "signal_strength_2_4_ghz": deco.signal_strength_band2_4,
+            "signal_strength_5_ghz": deco.signal_strength_band5,
+            "signal_strength_6_ghz": deco.signal_strength_band6,
+            "internet_status_message": deco.internet_status_message,
+            "parent_mac": deco.parent_mac,
+            "parent_device_id": deco.parent_device_id,
+            "device_id": deco.device_id,
+            "easymesh_role": deco.easymesh_role,
+            "rx_rate_band2_4": deco.rx_rate_band2_4,
+            "rx_rate_band5": deco.rx_rate_band5,
+            "tx_rate_band2_4": deco.tx_rate_band2_4,
+            "tx_rate_band5": deco.tx_rate_band5,
+            "wired_ports": deco.wired_ports,
+            "wired_port_speed_min": deco.wired_port_speed_min,
+            "backhaul_speed": deco.backhaul_speed,
+            "backhaul_max_speed": deco.backhaul_max_speed,
+            "cpu_usage": deco.cpu_usage,
+            "cpu_usage_raw": deco.cpu_usage_raw,
+            "memory_usage": deco.mem_usage,
+            "memory_usage_raw": deco.mem_usage_raw,
+            "extra": deco.extra,
+        },
+        TO_REDACT,
+    )
 
 
 def _client_diagnostics(
@@ -85,16 +117,23 @@ def _client_diagnostics(
 ) -> dict[str, Any]:
     """Return diagnostics for a client without personal identifiers."""
     last_activity: datetime | None = client.last_activity
-    return {
-        "id": identifier,
-        "deco_id": deco_ids.get(client.deco_mac, "unassigned"),
-        "online": client.online,
-        "connection_type": client.connection_type,
-        "interface": client.interface,
-        "down_kilobytes_per_s": client.down_kilobytes_per_s,
-        "up_kilobytes_per_s": client.up_kilobytes_per_s,
-        "last_activity": last_activity.isoformat() if last_activity else None,
-    }
+    return async_redact_data(
+        {
+            "id": identifier,
+            "deco_id": deco_ids.get(client.deco_mac, "unassigned"),
+            "online": client.online,
+            "connection_type": client.connection_type,
+            "interface": client.interface,
+            "client_type": client.client_type,
+            "wire_type": client.wire_type,
+            "client_mesh": client.client_mesh,
+            "down_kilobytes_per_s": client.down_kilobytes_per_s,
+            "up_kilobytes_per_s": client.up_kilobytes_per_s,
+            "last_activity": last_activity.isoformat() if last_activity else None,
+            "extra": client.extra,
+        },
+        TO_REDACT,
+    )
 
 
 async def async_get_config_entry_diagnostics(

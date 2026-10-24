@@ -50,6 +50,8 @@ def expected_device_list_after_decode() -> list[dict[str, Any]]:
     devices = load_fixture("device_list_decrypted.json")["result"]["device_list"]
     expected = [dict(device) for device in devices]
     expected[0]["custom_nickname"] = "Living Room"
+    expected[0]["default_ssid"] = "Deco"
+    expected[1]["default_ssid"] = "Deco"
     return expected
 
 

@@ -21,18 +21,36 @@ from .const import ATTR_BACKHAUL_BSSID_BAND2_4
 from .const import ATTR_BACKHAUL_BSSID_BAND5
 from .const import ATTR_BSSID_BAND2_4
 from .const import ATTR_BSSID_BAND5
+from .const import ATTR_CLIENT_MESH
+from .const import ATTR_CLIENT_TYPE
 from .const import ATTR_CONNECTION_TYPE
 from .const import ATTR_DECO_DEVICE
 from .const import ATTR_DECO_MAC
+from .const import ATTR_DEVICE_ID
 from .const import ATTR_DEVICE_MODEL
 from .const import ATTR_DEVICE_TYPE
 from .const import ATTR_DOWN_KILOBYTES_PER_S
+from .const import ATTR_EASYMESH_ROLE
 from .const import ATTR_INTERFACE
 from .const import ATTR_INTERNET_ONLINE
+from .const import ATTR_INTERNET_STATUS_MESSAGE
 from .const import ATTR_MASTER
+from .const import ATTR_PARENT_DEVICE_ID
+from .const import ATTR_PARENT_MAC
+from .const import ATTR_RX_RATE_BAND2_4
+from .const import ATTR_RX_RATE_BAND5
 from .const import ATTR_SIGNAL_BAND2_4
 from .const import ATTR_SIGNAL_BAND5
+from .const import ATTR_SIGNAL_BAND6
+from .const import ATTR_SIGNAL_STRENGTH_BAND2_4
+from .const import ATTR_SIGNAL_STRENGTH_BAND5
+from .const import ATTR_SIGNAL_STRENGTH_BAND6
+from .const import ATTR_TX_RATE_BAND2_4
+from .const import ATTR_TX_RATE_BAND5
 from .const import ATTR_UP_KILOBYTES_PER_S
+from .const import ATTR_WIRED_PORTS
+from .const import ATTR_WIRED_PORT_SPEED_MIN
+from .const import ATTR_WIRE_TYPE
 from .const import CONF_CLIENT_POSTFIX
 from .const import CONF_CLIENT_PREFIX
 from .const import CONF_DECO_POSTFIX
@@ -281,15 +299,33 @@ class TplinkDecoDeviceTracker(CoordinatorEntity, RestoreEntity, ScannerEntity):
             ATTR_DEVICE_TYPE: DEVICE_TYPE_DECO,
             ATTR_HW_VERSION: self._attr_hw_version,
             ATTR_INTERNET_ONLINE: self._deco.internet_online,
+            ATTR_INTERNET_STATUS_MESSAGE: self._deco.internet_status_message,
             ATTR_MASTER: self._attr_master,
+            ATTR_PARENT_MAC: self._deco.parent_mac,
+            ATTR_PARENT_DEVICE_ID: self._deco.parent_device_id,
+            ATTR_DEVICE_ID: self._deco.device_id,
+            ATTR_EASYMESH_ROLE: self._deco.easymesh_role,
+            ATTR_RX_RATE_BAND2_4: self._deco.rx_rate_band2_4,
+            ATTR_RX_RATE_BAND5: self._deco.rx_rate_band5,
             ATTR_SIGNAL_BAND2_4: self._deco.signal_band2_4,
             ATTR_SIGNAL_BAND5: self._deco.signal_band5,
+            ATTR_SIGNAL_BAND6: self._deco.signal_band6,
+            ATTR_SIGNAL_STRENGTH_BAND2_4: self._deco.signal_strength_band2_4,
+            ATTR_SIGNAL_STRENGTH_BAND5: self._deco.signal_strength_band5,
+            ATTR_SIGNAL_STRENGTH_BAND6: self._deco.signal_strength_band6,
             ATTR_SW_VERSION: self._attr_sw_version,
+            ATTR_TX_RATE_BAND2_4: self._deco.tx_rate_band2_4,
+            ATTR_TX_RATE_BAND5: self._deco.tx_rate_band5,
+            ATTR_WIRED_PORTS: self._deco.wired_ports,
+            ATTR_WIRED_PORT_SPEED_MIN: self._deco.wired_port_speed_min,
         }
         master = self.coordinator.data.master_deco
         if master and not self._deco.master:
             attributes[ATTR_DECO_DEVICE] = master.name
             attributes[ATTR_DECO_MAC] = master.mac
+
+        for key, value in self._deco.extra.items():
+            attributes.setdefault(key, value)
 
         return attributes
 
@@ -351,6 +387,9 @@ class TplinkDecoClientDeviceTracker(CoordinatorEntity, RestoreEntity, ScannerEnt
     ) -> None:
         """Initialize a TP-Link Deco device."""
         self._attr_connection_type = None
+        self._attr_client_type = None
+        self._attr_wire_type = None
+        self._attr_client_mesh = None
         self._attr_deco_mac = None
         self._attr_interface = None
         self._attr_ip_address = None
@@ -375,6 +414,8 @@ class TplinkDecoClientDeviceTracker(CoordinatorEntity, RestoreEntity, ScannerEnt
                 self._attr_connection_type = old_state.attributes.get(
                     ATTR_CONNECTION_TYPE
                 )
+            if self._attr_client_type is None:
+                self._attr_client_type = old_state.attributes.get(ATTR_CLIENT_TYPE)
             if self._attr_deco_mac is None:
                 self._attr_deco_mac = old_state.attributes.get(ATTR_DECO_MAC)
             if self._attr_interface is None:
@@ -428,6 +469,9 @@ class TplinkDecoClientDeviceTracker(CoordinatorEntity, RestoreEntity, ScannerEnt
         deco = self._coordinator_decos.data.decos.get(self._attr_deco_mac)
         attributes = {
             ATTR_CONNECTION_TYPE: self._attr_connection_type,
+            ATTR_CLIENT_TYPE: self._attr_client_type,
+            ATTR_WIRE_TYPE: self._attr_wire_type,
+            ATTR_CLIENT_MESH: self._attr_client_mesh,
             ATTR_DEVICE_TYPE: DEVICE_TYPE_CLIENT,
             ATTR_INTERFACE: self._attr_interface,
             ATTR_DOWN_KILOBYTES_PER_S: self._client.down_kilobytes_per_s,
@@ -438,6 +482,8 @@ class TplinkDecoClientDeviceTracker(CoordinatorEntity, RestoreEntity, ScannerEnt
         }
         if not self._link_client_devices:
             attributes[ATTR_MAC] = self._mac_address
+        for key, value in self._client.extra.items():
+            attributes.setdefault(key, value)
         return attributes
 
     @property
@@ -461,6 +507,15 @@ class TplinkDecoClientDeviceTracker(CoordinatorEntity, RestoreEntity, ScannerEnt
         changed = False
         if self._client.connection_type is not None:
             self._attr_connection_type = self._client.connection_type
+            changed = True
+        if self._client.client_type is not None:
+            self._attr_client_type = self._client.client_type
+            changed = True
+        if self._client.wire_type is not None:
+            self._attr_wire_type = self._client.wire_type
+            changed = True
+        if self._client.client_mesh is not None:
+            self._attr_client_mesh = self._client.client_mesh
             changed = True
         if self._client.deco_mac is not None:
             self._attr_deco_mac = self._client.deco_mac

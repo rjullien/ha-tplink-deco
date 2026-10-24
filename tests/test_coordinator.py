@@ -9,6 +9,11 @@ from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 
 import aiohttp
+from homeassistant.components.sensor.const import SensorDeviceClass
+from homeassistant.components.sensor.const import SensorStateClass
+from homeassistant.const import EntityCategory
+from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT
+from homeassistant.const import UnitOfDataRate
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
@@ -22,11 +27,14 @@ from custom_components.tplink_deco.coordinator import TpLinkDecoData
 from custom_components.tplink_deco.coordinator import TplinkDecoClientUpdateCoordinator
 from custom_components.tplink_deco.coordinator import TplinkDecoUpdateCoordinator
 from custom_components.tplink_deco.coordinator import filter_invalid_ip
+from custom_components.tplink_deco.diagnostics import _client_diagnostics
 from custom_components.tplink_deco.diagnostics import _coordinator_diagnostics
+from custom_components.tplink_deco.diagnostics import _deco_diagnostics
 from custom_components.tplink_deco.exceptions import LoginInvalidException
 from custom_components.tplink_deco.exceptions import TimeoutException
 from custom_components.tplink_deco.exceptions import UnexpectedApiException
 from custom_components.tplink_deco.sensor import COORDINATOR_HEALTH_SENSOR_DESCRIPTIONS
+from custom_components.tplink_deco.sensor import DIAGNOSTIC_SENSOR_DESCRIPTIONS
 
 
 def _make_hass() -> MagicMock:
@@ -116,6 +124,113 @@ class TestTpLinkDecoModel:
         assert deco.ip_address == "192.168.1.1"
         assert deco.signal_band2_4 == -50
 
+    def test_update_extended_fields_and_extra(self):
+        deco = TpLinkDeco("AA:BB:CC:DD:EE:02")
+        deco.update(
+            {
+                "mac": "AA:BB:CC:DD:EE:02",
+                "role": "slave",
+                "signal_level": {"band2_4": "2", "band5": "3", "band6": "4"},
+                "signal_strength": {
+                    "band2_4": "-51",
+                    "band5": "-62",
+                    "band6": "-70",
+                },
+                "inet_error_msg": "well",
+                "previous": "",
+                "parent_device_id": "fake-parent-id",
+                "device_id": "fake-device-id",
+                "easymesh_role": "agent",
+                "rx_rate_list": {"band2_4": 12, "band5": 34},
+                "tx_rate_list": {"band2_4": 56, "band5": 78},
+                "wired_port_list": [
+                    {
+                        "mac": "22:33:44:55:66:01",
+                        "port": 1,
+                        "port_speed": "1000",
+                    },
+                    {
+                        "mac": "22:33:44:55:66:02",
+                        "port": 1,
+                        "port_speed": "1000",
+                    },
+                    {
+                        "mac": "22:33:44:55:66:03",
+                        "port": "2",
+                        "port_speed": "100",
+                    },
+                ],
+                "nand_flash": "128MB",
+                "product_level": 2,
+                "future_field": "future-value",
+                "scalar_list": ["one", 2, True],
+                "default_ssid": "Deco",
+                "nested_field": {"ignored": "value"},
+                "nested_list": [{"ignored": "value"}],
+                "connection_type": "wifi",
+                "master": False,
+            }
+        )
+
+        assert deco.signal_strength_band2_4 == -51
+        assert deco.signal_strength_band5 == -62
+        assert deco.signal_strength_band6 == -70
+        assert deco.signal_band6 == "4"
+        assert deco.internet_status_message == "well"
+        assert deco.parent_mac is None
+        assert deco.parent_device_id == "fake-parent-id"
+        assert deco.device_id == "fake-device-id"
+        assert deco.easymesh_role == "agent"
+        assert deco.rx_rate_band2_4 == 12
+        assert deco.rx_rate_band5 == 34
+        assert deco.tx_rate_band2_4 == 56
+        assert deco.tx_rate_band5 == 78
+        assert deco.wired_ports == {
+            "1": {"speed": 1000, "clients": 2},
+            "2": {"speed": 100, "clients": 1},
+        }
+        assert deco.wired_port_speed_min == 100
+        assert deco.extra == {
+            "nand_flash": "128MB",
+            "product_level": 2,
+            "future_field": "future-value",
+            "scalar_list": ["one", 2, True],
+            "default_ssid": "Deco",
+            "master": False,
+        }
+        assert "wired_port_list" not in deco.extra
+        assert "signal_strength" not in deco.extra
+        assert "nested_field" not in deco.extra
+        assert "nested_list" not in deco.extra
+
+    def test_update_missing_or_invalid_signal_strength_and_wired_ports(self):
+        deco = TpLinkDeco("AA:BB:CC:DD:EE:01")
+        deco.update({"mac": "AA:BB:CC:DD:EE:01", "role": "master"})
+
+        assert deco.master is True
+        assert deco.signal_strength_band2_4 is None
+        assert deco.signal_strength_band5 is None
+        assert deco.signal_strength_band6 is None
+        assert deco.wired_ports == {}
+        assert deco.wired_port_speed_min is None
+
+        deco.update(
+            {
+                "signal_strength": {
+                    "band2_4": "invalid",
+                    "band5": None,
+                    "band6": "-65",
+                },
+                "wired_port_list": [{"port": "1", "port_speed": "unknown"}],
+            }
+        )
+
+        assert deco.signal_strength_band2_4 is None
+        assert deco.signal_strength_band5 is None
+        assert deco.signal_strength_band6 == -65
+        assert deco.wired_ports == {"1": {"speed": None, "clients": 1}}
+        assert deco.wired_port_speed_min is None
+
     def test_update_invalid_ip(self):
         deco = TpLinkDeco("AA:BB:CC:DD:EE:01")
         deco.update({"mac": "AA:BB:CC:DD:EE:01", "device_ip": "not-an-ip"})
@@ -138,6 +253,16 @@ class TestTpLinkDecoClientModel:
                 "ip": "192.168.1.50",
                 "down_speed": 8000,
                 "up_speed": 4000,
+                "client_type": "phone",
+                "wire_type": "wireless",
+                "client_mesh": True,
+                "access_host": "router.local",
+                "space_id": "fake-space-id",
+                "enable_priority": False,
+                "remain_time": 0,
+                "owner_id": "fake-owner-id",
+                "future_field": "future-client-value",
+                "nested_field": {"ignored": "value"},
             },
             "AA:BB:CC:DD:EE:01",
             now,
@@ -148,6 +273,131 @@ class TestTpLinkDecoClientModel:
         assert client.up_kilobytes_per_s == 500.0
         assert client.deco_mac == "AA:BB:CC:DD:EE:01"
         assert client.last_activity == now
+        assert client.client_type == "phone"
+        assert client.wire_type == "wireless"
+        assert client.client_mesh is True
+        assert client.extra == {
+            "access_host": "router.local",
+            "space_id": "fake-space-id",
+            "enable_priority": False,
+            "remain_time": 0,
+            "owner_id": "fake-owner-id",
+            "future_field": "future-client-value",
+        }
+
+
+def test_extended_diagnostic_sensor_descriptions():
+    deco = TpLinkDeco("AA:BB:CC:DD:EE:01")
+    deco.update(
+        {
+            "signal_strength": {"band2_4": "-51", "band5": -62, "band6": "-70"},
+            "inet_error_msg": "well",
+            "wired_port_list": [{"port": 1, "port_speed": "100"}],
+        }
+    )
+    descriptions = {
+        description.key: description
+        for description in DIAGNOSTIC_SENSOR_DESCRIPTIONS
+        if description.key
+        in {
+            "signal_strength_2_4ghz",
+            "signal_strength_5ghz",
+            "signal_strength_6ghz",
+            "internet_status_message",
+            "wired_port_speed_min",
+        }
+    }
+
+    assert descriptions["signal_strength_2_4ghz"].value_fn(deco) == -51
+    assert descriptions["signal_strength_5ghz"].value_fn(deco) == -62
+    assert descriptions["signal_strength_6ghz"].value_fn(deco) == -70
+    assert descriptions["internet_status_message"].value_fn(deco) == "well"
+    assert descriptions["wired_port_speed_min"].value_fn(deco) == 100
+
+    for key in (
+        "signal_strength_2_4ghz",
+        "signal_strength_5ghz",
+        "internet_status_message",
+        "wired_port_speed_min",
+    ):
+        assert descriptions[key].entity_registry_enabled_default is True
+        assert descriptions[key].entity_category == EntityCategory.DIAGNOSTIC
+    assert descriptions["signal_strength_6ghz"].entity_registry_enabled_default is False
+    assert (
+        descriptions["signal_strength_6ghz"].entity_category
+        == EntityCategory.DIAGNOSTIC
+    )
+    for key in (
+        "signal_strength_2_4ghz",
+        "signal_strength_5ghz",
+        "signal_strength_6ghz",
+    ):
+        assert descriptions[key].device_class == SensorDeviceClass.SIGNAL_STRENGTH
+        assert descriptions[key].native_unit_of_measurement == (
+            SIGNAL_STRENGTH_DECIBELS_MILLIWATT
+        )
+        assert descriptions[key].state_class == SensorStateClass.MEASUREMENT
+    assert (
+        descriptions["wired_port_speed_min"].native_unit_of_measurement
+        == UnitOfDataRate.MEGABITS_PER_SECOND
+    )
+    assert (
+        descriptions["wired_port_speed_min"].state_class == SensorStateClass.MEASUREMENT
+    )
+
+
+def test_extended_diagnostics_include_fields_and_redact_identifiers():
+    deco = TpLinkDeco("AA:BB:CC:DD:EE:01")
+    deco.update(
+        {
+            "signal_strength": {"band2_4": "-51"},
+            "signal_level": {"band6": "4"},
+            "inet_error_msg": "well",
+            "previous": "11:22:33:44:55:66",
+            "parent_device_id": "fake-parent-id",
+            "device_id": "fake-device-id",
+            "default_ssid": "fake-wifi-name",
+            "wired_port_list": [{"port": 1, "port_speed": 1000}],
+            "future_field": "safe-value",
+        }
+    )
+    deco_diagnostics = _deco_diagnostics(deco, "deco_1")
+    client = TpLinkDecoClient("11:22:33:44:55:66")
+    client.update(
+        {
+            "mac": client.mac,
+            "client_type": "phone",
+            "wire_type": "wireless",
+            "client_mesh": True,
+            "access_host": "private-host",
+            "space_id": "fake-space-id",
+            "owner_id": "fake-owner-id",
+            "future_field": "safe-client-value",
+        },
+        deco.mac,
+        datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc),
+    )
+    client_diagnostics = _client_diagnostics(
+        client,
+        "client_1",
+        {deco.mac: "deco_1"},
+    )
+
+    assert deco_diagnostics["signal_strength_2_4_ghz"] == -51
+    assert deco_diagnostics["signal_6_ghz"] == "4"
+    assert deco_diagnostics["wired_port_speed_min"] == 1000
+    assert deco_diagnostics["extra"]["future_field"] == "safe-value"
+    assert "11:22:33:44:55:66" not in str(deco_diagnostics)
+    assert "fake-parent-id" not in str(deco_diagnostics)
+    assert "fake-device-id" not in str(deco_diagnostics)
+    assert "fake-wifi-name" not in str(deco_diagnostics)
+    assert client_diagnostics["client_type"] == "phone"
+    assert client_diagnostics["wire_type"] == "wireless"
+    assert client_diagnostics["client_mesh"] is True
+    assert client_diagnostics["extra"]["future_field"] == "safe-client-value"
+    assert "private-host" not in str(client_diagnostics)
+    assert "fake-space-id" not in str(client_diagnostics)
+    assert "fake-owner-id" not in str(client_diagnostics)
 
 
 @pytest.mark.asyncio
