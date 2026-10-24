@@ -274,6 +274,7 @@ async def async_setup_entry(
     coordinator_clients = data[COORDINATOR_CLIENTS_KEY]
 
     tracked_decos = set()
+    added_diagnostic_keys: dict[str, set[str]] = {}
     total_sensors_added = False
 
     def add_sensors_for_deco(
@@ -305,21 +306,6 @@ async def async_setup_entry(
             ),
         ]
 
-        if deco is not None:
-            for description in DIAGNOSTIC_SENSOR_DESCRIPTIONS:
-                value = description.value_fn(deco)
-
-                if value is None or value == "" or value == []:
-                    continue
-
-                entities.append(
-                    TplinkDecoDiagnosticSensor(
-                        coordinator_decos,
-                        deco.mac,
-                        description,
-                    )
-                )
-
         async_add_entities(entities)
 
     client_count_tracked_decos = set()
@@ -347,12 +333,36 @@ async def async_setup_entry(
             total_sensors_added = True
 
         for mac, deco in coordinator_decos.data.decos.items():
-            if mac in tracked_decos:
-                continue
+            if mac not in tracked_decos:
+                _LOGGER.debug(
+                    "check_new_decos: Adding deco sensors for mac=%s", deco.mac
+                )
+                add_sensors_for_deco(deco)
+                tracked_decos.add(mac)
 
-            _LOGGER.debug("check_new_decos: Adding deco sensors for mac=%s", deco.mac)
-            add_sensors_for_deco(deco)
-            tracked_decos.add(mac)
+            added_keys = added_diagnostic_keys.setdefault(mac, set())
+            entities = []
+            new_keys = []
+            for description in DIAGNOSTIC_SENSOR_DESCRIPTIONS:
+                if description.key in added_keys:
+                    continue
+
+                value = description.value_fn(deco)
+                if value is None or value == "" or value == []:
+                    continue
+
+                entities.append(
+                    TplinkDecoDiagnosticSensor(
+                        coordinator_decos,
+                        deco.mac,
+                        description,
+                    )
+                )
+                new_keys.append(description.key)
+
+            if entities:
+                async_add_entities(entities)
+                added_keys.update(new_keys)
 
     check_new_decos()
 

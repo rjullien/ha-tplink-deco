@@ -86,6 +86,59 @@ def test_deco_extra_attributes_do_not_override_named_attributes():
     assert attributes["future_field"] == "preserved"
 
 
+def test_secret_api_fields_are_not_exposed_on_tracker_attributes():
+    secret_keys = {"stok", "password", "token", "cookie"}
+    deco = _make_master_deco()
+    deco.update(
+        {
+            "mac": deco.mac,
+            "nickname": "living_room",
+            "role": "master",
+            "connection_type": "wifi",
+            "token": "secret-token",
+            "Stok": "secret-stok",
+            "password": "secret-password",
+            "cookie": "secret-cookie",
+            "future_field": "safe-deco-value",
+        }
+    )
+    deco_entity = TplinkDecoDeviceTracker(
+        _make_deco_coordinator(deco),
+        deco,
+        "",
+        "",
+    )
+    deco_attributes = deco_entity.extra_state_attributes
+
+    assert not any(key.casefold() in secret_keys for key in deco_attributes)
+    assert deco_attributes["future_field"] == "safe-deco-value"
+
+    client_entity, client = _make_client_entity()
+    client.update(
+        {
+            "mac": client.mac,
+            "name": "Phone",
+            "ip": "192.0.2.5",
+            "connection_type": "band5",
+            "interface": "main",
+            "client_type": "phone",
+            "wire_type": "wireless",
+            "client_mesh": True,
+            "token": "secret-token",
+            "Stok": "secret-stok",
+            "password": "secret-password",
+            "cookie": "secret-cookie",
+            "future_field": "safe-client-value",
+        },
+        client.deco_mac,
+        datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc),
+    )
+    client_attributes = client_entity.extra_state_attributes
+
+    assert not any(key.casefold() in secret_keys for key in client_attributes)
+    assert client_attributes["future_field"] == "safe-client-value"
+
+
 def test_client_extra_attributes_do_not_override_named_attributes():
     entity, client = _make_client_entity()
     client.extra = {

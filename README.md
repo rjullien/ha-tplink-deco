@@ -111,6 +111,13 @@ Configurable:
 >
 > **HACS depuis v3.14.x :** `3.10.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
 
+### v3.11.0.4
+
+- Retry diagnostic sensor creation when values arrive in later Deco updates, without creating duplicate entities.
+- Exclude case-insensitive `stok`, `password`, `token`, and `cookie` fields from generic tracker attributes (#31).
+
+---
+
 ### v3.11.0.3
 
 - Expose Deco signal strength, Wi-Fi rates, EasyMesh/device metadata, summarized wired ports, and scalar API fields on Deco/client trackers; add diagnostic sensors for signal strength, internet status, and minimum wired-port speed (#29).
