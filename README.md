@@ -111,6 +111,12 @@ Configurable:
 >
 > **HACS depuis v3.14.x :** `3.10.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
 
+### v3.11.0.2
+
+- DEBUG logging of the decrypted raw `device_list` / `client_list` / `performance` / reboot responses (identifiers kept, `stok`/`password`/`token`/`cookie` masked; login/auth responses never logged). Enable with `logger: custom_components.tplink_deco: debug`. No extra API call (#29)
+
+---
+
 ### v3.11.0.1
 
 - Retry a suspiciously small Deco client list once without clearing or replacing the current session; preserve the previous client state if the retry remains suspicious.
