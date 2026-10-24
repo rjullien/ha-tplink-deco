@@ -75,6 +75,113 @@ def coerce_float(value):
         return None
 
 
+def coerce_int(value: Any) -> int | None:
+    """Coerce integer values returned as strings by Deco firmware."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _is_scalar(value: Any) -> bool:
+    return value is None or isinstance(value, (str, int, float, bool))
+
+
+def _extra_fields(
+    data: dict[str, Any],
+    handled_fields: frozenset[str],
+    *,
+    scalar_lists: bool = False,
+) -> dict[str, Any]:
+    """Return unhandled scalar API values suitable for entity attributes."""
+    return {
+        key: value
+        for key, value in data.items()
+        if isinstance(key, str)
+        and key not in handled_fields
+        and (
+            _is_scalar(value)
+            or (
+                scalar_lists
+                and isinstance(value, list)
+                and all(_is_scalar(item) for item in value)
+            )
+        )
+    }
+
+
+_DECO_HANDLED_FIELDS = frozenset(
+    {
+        "mac",
+        "hardware_ver",
+        "software_ver",
+        "device_model",
+        "custom_nickname",
+        "nickname",
+        "device_ip",
+        "group_status",
+        "inet_status",
+        "role",
+        "connection_type",
+        "bssid_2g",
+        "bssid_5g",
+        "bssid_sta_2g",
+        "bssid_sta_5g",
+        "signal_level",
+        "backhual_speed",
+        "backhual_max_speed",
+        "signal_strength",
+        "inet_error_msg",
+        "previous",
+        "parent_device_id",
+        "device_id",
+        "easymesh_role",
+        "rx_rate_list",
+        "tx_rate_list",
+        "wired_port_list",
+    }
+)
+
+_CLIENT_HANDLED_FIELDS = frozenset(
+    {
+        "mac",
+        "name",
+        "ip",
+        "online",
+        "connection_type",
+        "interface",
+        "down_speed",
+        "up_speed",
+        "client_type",
+        "wire_type",
+        "client_mesh",
+    }
+)
+
+
+def _summarize_wired_ports(port_list: Any) -> dict[str, dict[str, int | None]]:
+    """Summarize the repeated client entries in a Deco wired-port list."""
+    ports: dict[str, dict[str, int | None]] = {}
+    if not isinstance(port_list, list):
+        return ports
+
+    for client in port_list:
+        if not isinstance(client, dict) or client.get("port") is None:
+            continue
+        port = str(client["port"])
+        speed = coerce_int(client.get("port_speed"))
+        summary = ports.setdefault(port, {"speed": speed, "clients": 0})
+        if summary["speed"] is None:
+            summary["speed"] = speed
+        elif speed is not None:
+            summary["speed"] = min(summary["speed"], speed)
+        summary["clients"] = int(summary["clients"]) + 1
+
+    return ports
+
+
 def kilobits_to_kilobytes(kilobits_count):
     """Convert kilobits to kilobytes (the Deco API reports speeds in kbit/s)."""
     numeric_value = coerce_float(kilobits_count)
@@ -124,6 +231,22 @@ class TpLinkDeco:
         self.backhaul_bssid_band5 = None
         self.signal_band2_4 = None
         self.signal_band5 = None
+        self.signal_band6 = None
+        self.signal_strength_band2_4 = None
+        self.signal_strength_band5 = None
+        self.signal_strength_band6 = None
+        self.internet_status_message = None
+        self.parent_mac = None
+        self.parent_device_id = None
+        self.device_id = None
+        self.easymesh_role = None
+        self.rx_rate_band2_4 = None
+        self.rx_rate_band5 = None
+        self.tx_rate_band2_4 = None
+        self.tx_rate_band5 = None
+        self.wired_ports: dict[str, dict[str, int | None]] = {}
+        self.wired_port_speed_min = None
+        self.extra: dict[str, Any] = {}
         self.backhaul_speed = None
         self.backhaul_max_speed = None
         self.cpu_usage = None
@@ -159,9 +282,41 @@ class TpLinkDeco:
         self.bssid_band5 = data.get("bssid_5g")
         self.backhaul_bssid_band2_4 = data.get("bssid_sta_2g")
         self.backhaul_bssid_band5 = data.get("bssid_sta_5g")
-        signal_level = data.get("signal_level", {})
+        signal_level = data.get("signal_level")
+        if not isinstance(signal_level, dict):
+            signal_level = {}
         self.signal_band2_4 = signal_level.get("band2_4")
         self.signal_band5 = signal_level.get("band5")
+        self.signal_band6 = signal_level.get("band6")
+        signal_strength = data.get("signal_strength")
+        if not isinstance(signal_strength, dict):
+            signal_strength = {}
+        self.signal_strength_band2_4 = coerce_int(signal_strength.get("band2_4"))
+        self.signal_strength_band5 = coerce_int(signal_strength.get("band5"))
+        self.signal_strength_band6 = coerce_int(signal_strength.get("band6"))
+        self.internet_status_message = data.get("inet_error_msg")
+        self.parent_mac = data.get("previous") or None
+        self.parent_device_id = data.get("parent_device_id")
+        self.device_id = data.get("device_id")
+        self.easymesh_role = data.get("easymesh_role")
+        rx_rates = data.get("rx_rate_list")
+        if not isinstance(rx_rates, dict):
+            rx_rates = {}
+        tx_rates = data.get("tx_rate_list")
+        if not isinstance(tx_rates, dict):
+            tx_rates = {}
+        self.rx_rate_band2_4 = rx_rates.get("band2_4")
+        self.rx_rate_band5 = rx_rates.get("band5")
+        self.tx_rate_band2_4 = tx_rates.get("band2_4")
+        self.tx_rate_band5 = tx_rates.get("band5")
+        self.wired_ports = _summarize_wired_ports(data.get("wired_port_list"))
+        speeds = [
+            port["speed"]
+            for port in self.wired_ports.values()
+            if isinstance(port["speed"], int) and not isinstance(port["speed"], bool)
+        ]
+        self.wired_port_speed_min = min(speeds) if speeds else None
+        self.extra = _extra_fields(data, _DECO_HANDLED_FIELDS, scalar_lists=True)
         self.backhaul_speed = data.get("backhual_speed")
         self.backhaul_max_speed = data.get("backhual_max_speed")
 
@@ -176,10 +331,14 @@ class TpLinkDecoClient:
         self.online = False
         self.connection_type = None
         self.interface = None
+        self.client_type = None
+        self.wire_type = None
+        self.client_mesh = None
         self.down_kilobytes_per_s = 0
         self.up_kilobytes_per_s = 0
         self.deco_mac = None
         self.last_activity = None
+        self.extra: dict[str, Any] = {}
 
     def update(
         self,
@@ -195,9 +354,13 @@ class TpLinkDecoClient:
         self.online = bool(data.get("online", True))
         self.connection_type = data.get("connection_type")
         self.interface = data.get("interface")
+        self.client_type = data.get("client_type")
+        self.wire_type = data.get("wire_type")
+        self.client_mesh = data.get("client_mesh")
         self.down_kilobytes_per_s = kilobits_to_kilobytes(data.get("down_speed", 0))
         self.up_kilobytes_per_s = kilobits_to_kilobytes(data.get("up_speed", 0))
         self.last_activity = utc_point_in_time
+        self.extra = _extra_fields(data, _CLIENT_HANDLED_FIELDS)
 
 
 class TpLinkDecoData:

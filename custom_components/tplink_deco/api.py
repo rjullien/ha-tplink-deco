@@ -244,11 +244,10 @@ class TplinkDecoApi:
             _LOGGER.debug("List devices device_count=%d", len(device_list))
 
             for device in device_list:
-                custom_nickname = device.get("custom_nickname")
-                if custom_nickname is not None:
-                    device["custom_nickname"] = decode_name_with_fallback(
-                        custom_nickname
-                    )
+                for name_key in ("custom_nickname", "default_ssid"):
+                    name = device.get(name_key)
+                    if name is not None:
+                        device[name_key] = decode_name_with_fallback(name)
 
             return device_list
         except Exception as err:

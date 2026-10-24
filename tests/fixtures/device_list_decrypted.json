@@ -6,9 +6,11 @@
         "mac": "AA:BB:CC:DD:EE:01",
         "nickname": "living_room",
         "custom_nickname": "TGl2aW5nIFJvb20=",
+        "default_ssid": "RGVjbw==",
         "device_ip": "192.168.1.1",
         "group_status": "connected",
         "inet_status": "online",
+        "inet_error_msg": "well",
         "role": "master",
         "connection_type": "wifi",
         "hardware_ver": "1.0",
@@ -22,12 +24,33 @@
         "mac": "AA:BB:CC:DD:EE:02",
         "nickname": "bedroom",
         "device_ip": "192.168.1.2",
+        "default_ssid": "RGVjbw==",
         "group_status": "connected",
         "inet_status": "connected",
+        "inet_error_msg": "well",
         "role": "slave",
         "connection_type": "wifi",
         "backhual_speed": 1200,
-        "backhual_max_speed": 2400
+        "backhual_max_speed": 2400,
+        "signal_level": { "band2_4": "2", "band5": "3", "band6": "4" },
+        "signal_strength": { "band2_4": "-51", "band5": "-62", "band6": "-70" },
+        "previous": "",
+        "parent_device_id": "fake-parent-id",
+        "device_id": "fake-device-id",
+        "easymesh_role": "agent",
+        "rx_rate_list": { "band2_4": 12, "band5": 34 },
+        "tx_rate_list": { "band2_4": 56, "band5": 78 },
+        "wired_port_list": [
+          { "mac": "22:33:44:55:66:01", "port": 1, "port_speed": "1000" },
+          { "mac": "22:33:44:55:66:02", "port": 1, "port_speed": "1000" },
+          { "mac": "22:33:44:55:66:03", "port": "2", "port_speed": "100" }
+        ],
+        "nand_flash": "128MB",
+        "product_level": 2,
+        "future_field": "future-value",
+        "scalar_list": ["one", 2, true],
+        "nested_field": { "ignored": "value" },
+        "nested_list": [{ "ignored": "value" }]
       }
     ]
   }

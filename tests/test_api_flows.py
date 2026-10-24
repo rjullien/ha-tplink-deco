@@ -100,6 +100,7 @@ async def test_async_list_devices_parses_fixture(api, mock_session):
     devices = await api.async_list_devices()
 
     assert devices == expected_device_list_after_decode()
+    assert devices[0]["default_ssid"] == "Deco"
     call = mock_session.post.await_args
     assert call.kwargs["params"]["form"] == "device_list"
     assert "sign=" in call.kwargs["data"]

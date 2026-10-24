@@ -10,7 +10,17 @@
         "up_speed": 4000,
         "connection_type": "band5",
         "interface": "main",
-        "online": true
+        "online": true,
+        "client_type": "phone",
+        "wire_type": "wireless",
+        "client_mesh": true,
+        "access_host": "router.local",
+        "space_id": "fake-space-id",
+        "enable_priority": false,
+        "remain_time": 0,
+        "owner_id": "fake-owner-id",
+        "future_field": "future-client-value",
+        "nested_field": { "ignored": "value" }
       },
       {
         "mac": "11:22:33:44:55:77",
