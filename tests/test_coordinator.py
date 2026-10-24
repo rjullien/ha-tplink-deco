@@ -567,12 +567,13 @@ async def test_suspicious_client_list_failure_keeps_old_data_and_session(
     assert coordinator.data is old_clients
     assert all(client.online for client in old_clients.values())
     assert coordinator.health.suspect_client_list_count == 1
+    assert coordinator._suspicious_baseline == 10
     assert api.async_list_clients.await_count == 2
     api.clear_auth.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_suspicious_client_list_cap_creates_and_clears_repair_issue(
+async def test_suspicious_client_list_issue_persists_until_baseline_recovery(
     monkeypatch,
 ):
     fixed_now = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
@@ -596,30 +597,45 @@ async def test_suspicious_client_list_cap_creates_and_clears_repair_issue(
             [],
             [
                 {"mac": f"22:33:44:55:66:{index:02X}", "name": "Phone"}
-                for index in range(5)
+                for index in range(7)
+            ],
+            [
+                {"mac": f"22:33:44:55:77:{index:02X}", "name": "Phone"}
+                for index in range(10)
             ],
         ]
     )
-    old_clients = _old_online_clients(10, "AA:BB:CC:DD:EE:01", fixed_now)
+    old_clients = _old_online_clients(50, "AA:BB:CC:DD:EE:01", fixed_now)
     coordinator, _master = _make_client_coordinator(api, old_clients)
     coordinator._suspicious_client_list_since = fixed_now - timedelta(minutes=30)
+    coordinator._suspicious_baseline = 50
 
     data = await coordinator._async_update_data()
 
     assert api.async_list_clients.await_count == 1
     assert coordinator.health.suspect_client_list_count == 1
     assert coordinator._suspicious_client_list_issue_open is True
+    assert coordinator._suspicious_baseline == 50
     create_issue.assert_called_once()
     assert create_issue.call_args.kwargs["translation_key"] == "suspicious_client_list"
     assert data.keys() == old_clients.keys()
     assert all(data[mac] is old_clients[mac] for mac in old_clients)
 
     coordinator.data = data
-    await coordinator._async_update_data()
+    low_data = await coordinator._async_update_data()
 
     assert api.async_list_clients.await_count == 2
-    assert coordinator._suspicious_client_list_since is None
+    assert coordinator._suspicious_client_list_issue_open is True
+    assert coordinator._suspicious_baseline == 50
+    delete_issue.assert_not_called()
+
+    coordinator.data = low_data
+    await coordinator._async_update_data()
+
+    assert api.async_list_clients.await_count == 3
     assert coordinator._suspicious_client_list_issue_open is False
+    assert coordinator._suspicious_client_list_since is None
+    assert coordinator._suspicious_baseline is None
     delete_issue.assert_called_once()
 
 
@@ -640,6 +656,7 @@ async def test_first_client_list_without_baseline_is_accepted():
     assert api.async_list_clients.await_count == 1
     assert coordinator.health.suspect_client_list_count == 0
     assert coordinator._suspicious_client_list_since is None
+    assert coordinator._suspicious_baseline is None
 
 
 @pytest.mark.asyncio

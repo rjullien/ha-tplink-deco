@@ -405,6 +405,7 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         self._next_per_node_probe = 0.0
         self.health = CoordinatorHealth()
         self._suspicious_client_list_since: datetime | None = None
+        self._suspicious_baseline: int | None = None
         self._suspicious_client_list_issue_open = False
 
     @property
@@ -545,10 +546,23 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
             len(deco_clients or []) for _deco_mac, deco_clients in deco_client_responses
         )
         suspicious_client_list = prev_online >= 10 and new_total < 0.2 * prev_online
+        if self._suspicious_client_list_issue_open:
+            baseline = self._suspicious_baseline or prev_online
+            if new_total >= 0.2 * baseline:
+                async_delete_issue(self.hass, DOMAIN, SUSPICIOUS_CLIENT_LIST_ISSUE_ID)
+                self._suspicious_client_list_issue_open = False
+                self._suspicious_client_list_since = None
+                self._suspicious_baseline = None
+                suspicious_client_list = False
+
         if suspicious_client_list:
             self.health.suspect_client_list_count += 1
             if self._suspicious_client_list_since is None:
                 self._suspicious_client_list_since = utc_point_in_time
+                self._suspicious_baseline = prev_online
+            elif self._suspicious_baseline is None:
+                self._suspicious_baseline = prev_online
+            baseline = self._suspicious_baseline
 
             if (
                 utc_point_in_time - self._suspicious_client_list_since
@@ -583,24 +597,19 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
                     len(deco_clients or [])
                     for _deco_mac, deco_clients in retry_client_responses
                 )
-                if retry_total < 0.2 * prev_online:
+                if retry_total < 0.2 * baseline:
                     raise UpdateFailed(
                         f"Suspicious client list: {retry_total} clients vs "
-                        f"{prev_online} online before"
+                        f"{baseline} online before"
                     )
                 deco_client_responses = retry_client_responses
                 failed_deco_macs.clear()
                 self._suspicious_client_list_since = None
-                if self._suspicious_client_list_issue_open:
-                    async_delete_issue(
-                        self.hass, DOMAIN, SUSPICIOUS_CLIENT_LIST_ISSUE_ID
-                    )
-                    self._suspicious_client_list_issue_open = False
+                self._suspicious_baseline = None
         else:
-            self._suspicious_client_list_since = None
-            if self._suspicious_client_list_issue_open:
-                async_delete_issue(self.hass, DOMAIN, SUSPICIOUS_CLIENT_LIST_ISSUE_ID)
-                self._suspicious_client_list_issue_open = False
+            if not self._suspicious_client_list_issue_open:
+                self._suspicious_client_list_since = None
+                self._suspicious_baseline = None
 
         if len(deco_client_responses) > 0:
             for deco_mac, deco_clients in deco_client_responses:
