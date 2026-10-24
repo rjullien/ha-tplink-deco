@@ -28,5 +28,11 @@
         }
       }
     }
+  },
+  "issues": {
+    "suspicious_client_list": {
+      "title": "Liste de clients Deco anormalement réduite",
+      "description": "La liste de clients Deco est anormalement réduite depuis au moins 30 minutes. La liste actuelle est acceptée pour maintenir les mises à jour. Vérifiez le réseau et le maillage Deco."
+    }
   }
 }

@@ -67,5 +67,11 @@
       "timeout_connect": "Timeout establishing connection",
       "unknown": "Unexpected error"
     }
+  },
+  "issues": {
+    "suspicious_client_list": {
+      "title": "Deco client list is suspiciously small",
+      "description": "The Deco client list has remained suspiciously small for at least 30 minutes. The current list is being accepted to keep updates running. Check the Deco mesh and network."
+    }
   }
 }

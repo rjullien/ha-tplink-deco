@@ -16,7 +16,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.issue_registry import IssueSeverity
+from homeassistant.helpers.issue_registry import async_create_issue
+from homeassistant.helpers.issue_registry import async_delete_issue
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api import TplinkDecoApi
@@ -31,6 +35,8 @@ from .exceptions import TransientConnectionException
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 GLOBAL_FALLBACK_PROBE_INTERVAL_SECONDS = 300
+SUSPICIOUS_CLIENT_LIST_RETRY_WINDOW = timedelta(minutes=30)
+SUSPICIOUS_CLIENT_LIST_ISSUE_ID = "suspicious_client_list"
 
 
 @dataclass
@@ -40,6 +46,7 @@ class CoordinatorHealth:
     last_successful_update: datetime | None = None
     response_time_ms: int | None = None
     timeout_count: int = 0
+    suspect_client_list_count: int = 0
     consecutive_failures: int = 0
     last_error: str = "0"
 
@@ -393,10 +400,16 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         )
         # Must happen after super().__init__
         self.data = {} if data is None else data
+        self._suspicious_client_list_issue_id = (
+            f"{SUSPICIOUS_CLIENT_LIST_ISSUE_ID}_{config_entry.entry_id}"
+        )
         self.has_successful_refresh = False
         self._use_global_client_query = False
         self._next_per_node_probe = 0.0
         self.health = CoordinatorHealth()
+        self._suspicious_client_list_since: datetime | None = None
+        self._suspicious_baseline: int | None = None
+        self._suspicious_client_list_issue_open = False
 
     @property
     def client_query_mode(self) -> str:
@@ -486,6 +499,7 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         utc_point_in_time = dt_util.utcnow()
 
         failed_deco_macs = set()
+        per_node_results = False
         should_try_per_node = (
             not self._use_global_client_query
             or monotonic() >= self._next_per_node_probe
@@ -496,6 +510,7 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
                 await self._async_list_clients_per_deco(deco_macs)
             )
             if deco_client_responses:
+                per_node_results = True
                 if self._use_global_client_query:
                     _LOGGER.info(
                         "Per-node client_list recovered; leaving global fallback"
@@ -515,6 +530,94 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         else:
             deco_macs, responses = await self._async_list_clients_global()
             deco_client_responses = list(zip(deco_macs, responses))
+
+        if per_node_results:
+            for deco_mac, deco_clients in deco_client_responses:
+                if (
+                    deco_clients is not None
+                    and not deco_clients
+                    and sum(
+                        client.online and client.deco_mac == deco_mac
+                        for client in old_clients.values()
+                    )
+                    >= 3
+                ):
+                    failed_deco_macs.add(deco_mac)
+
+        prev_online = sum(client.online for client in old_clients.values())
+        new_total = sum(
+            len(deco_clients or []) for _deco_mac, deco_clients in deco_client_responses
+        )
+        suspicious_client_list = prev_online >= 10 and new_total < 0.2 * prev_online
+        if self._suspicious_client_list_issue_open:
+            baseline = self._suspicious_baseline or prev_online
+            if new_total >= 0.2 * baseline:
+                async_delete_issue(
+                    self.hass,
+                    DOMAIN,
+                    self._suspicious_client_list_issue_id,
+                )
+                self._suspicious_client_list_issue_open = False
+                self._suspicious_client_list_since = None
+                self._suspicious_baseline = None
+                suspicious_client_list = False
+
+        if suspicious_client_list:
+            self.health.suspect_client_list_count += 1
+            if self._suspicious_client_list_since is None:
+                self._suspicious_client_list_since = utc_point_in_time
+                self._suspicious_baseline = prev_online
+            elif self._suspicious_baseline is None:
+                self._suspicious_baseline = prev_online
+            baseline = self._suspicious_baseline
+
+            if (
+                utc_point_in_time - self._suspicious_client_list_since
+                >= SUSPICIOUS_CLIENT_LIST_RETRY_WINDOW
+            ):
+                _LOGGER.warning(
+                    "Suspicious client list persisted for 30 minutes "
+                    "(%d clients vs %d online before); accepting current list",
+                    new_total,
+                    prev_online,
+                )
+                if not self._suspicious_client_list_issue_open:
+                    async_create_issue(
+                        self.hass,
+                        DOMAIN,
+                        self._suspicious_client_list_issue_id,
+                        is_fixable=False,
+                        severity=IssueSeverity.WARNING,
+                        translation_key=SUSPICIOUS_CLIENT_LIST_ISSUE_ID,
+                    )
+                    self._suspicious_client_list_issue_open = True
+                failed_deco_macs.clear()
+            else:
+                _LOGGER.warning(
+                    "Suspicious client list (%d clients vs %d online before); "
+                    "retrying once",
+                    new_total,
+                    prev_online,
+                )
+                deco_macs, retry_responses = await self._async_list_clients_global()
+                retry_client_responses = list(zip(deco_macs, retry_responses))
+                retry_total = sum(
+                    len(deco_clients or [])
+                    for _deco_mac, deco_clients in retry_client_responses
+                )
+                if retry_total < 0.2 * baseline:
+                    raise UpdateFailed(
+                        f"Suspicious client list: {retry_total} clients vs "
+                        f"{baseline} online before"
+                    )
+                deco_client_responses = retry_client_responses
+                failed_deco_macs.clear()
+                self._suspicious_client_list_since = None
+                self._suspicious_baseline = None
+        else:
+            if not self._suspicious_client_list_issue_open:
+                self._suspicious_client_list_since = None
+                self._suspicious_baseline = None
 
         if len(deco_client_responses) > 0:
             for deco_mac, deco_clients in deco_client_responses:

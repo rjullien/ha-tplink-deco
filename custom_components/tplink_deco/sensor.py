@@ -192,6 +192,14 @@ COORDINATOR_HEALTH_SENSOR_DESCRIPTIONS: tuple[
         value_fn=lambda coordinator: coordinator.health.timeout_count,
     ),
     TplinkCoordinatorHealthSensorDescription(
+        key="client_suspect_client_list_count",
+        name="Suspicious client lists",
+        coordinator_key=COORDINATOR_CLIENTS_KEY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda coordinator: coordinator.health.suspect_client_list_count,
+    ),
+    TplinkCoordinatorHealthSensorDescription(
         key="client_query_mode",
         name="Client query mode",
         coordinator_key=COORDINATOR_CLIENTS_KEY,
