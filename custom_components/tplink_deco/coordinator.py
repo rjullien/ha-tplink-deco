@@ -24,6 +24,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api import TplinkDecoApi
+from .api import _RAW_RESPONSE_SECRET_KEYS
 from .api import normalize_name
 from .const import DOMAIN
 from .const import SIGNAL_CLIENT_ADDED
@@ -101,6 +102,7 @@ def _extra_fields(
         for key, value in data.items()
         if isinstance(key, str)
         and key not in handled_fields
+        and key.casefold() not in _RAW_RESPONSE_SECRET_KEYS
         and (
             _is_scalar(value)
             or (
