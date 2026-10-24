@@ -39,6 +39,31 @@ TRANSIENT_RETRY_DELAY_SECONDS = 2
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 LEGACY_ERROR_DECODING_PATTERN = re.compile(r"^<Error Decoding (.*)>$")
+_RAW_RESPONSE_SECRET_KEYS = frozenset({"stok", "password", "token", "cookie"})
+
+
+def _redact_raw_response(data: Any) -> Any:
+    if isinstance(data, dict):
+        return {
+            key: (
+                "**REDACTED**"
+                if isinstance(key, str) and key.casefold() in _RAW_RESPONSE_SECRET_KEYS
+                else _redact_raw_response(value)
+            )
+            for key, value in data.items()
+        }
+    if isinstance(data, list):
+        return [_redact_raw_response(value) for value in data]
+    return data
+
+
+def _log_raw(context: str, data: Any) -> None:
+    if _LOGGER.isEnabledFor(logging.DEBUG):
+        _LOGGER.debug(
+            "%s raw response: %s",
+            context,
+            json.dumps(_redact_raw_response(data), ensure_ascii=False),
+        )
 
 
 def normalize_name(name: str):
@@ -211,6 +236,7 @@ class TplinkDecoApi:
             data=self._encode_payload(device_list_payload),
         )
         data = self._decrypt_data(context, response_json.get("data", ""))
+        _log_raw(context, data)
         check_data_error_code(context, data)
 
         try:
@@ -252,6 +278,7 @@ class TplinkDecoApi:
         )
 
         data = self._decrypt_data(context, response_json.get("data", ""))
+        _log_raw(context, data)
         check_data_error_code(context, data)
         _LOGGER.debug("Rebooted decos %s", deco_macs)
 
@@ -273,6 +300,7 @@ class TplinkDecoApi:
         )
 
         data = self._decrypt_data(context, response_json.get("data", ""))
+        _log_raw(context, data)
         check_data_error_code(context, data)
         return data
 
@@ -299,6 +327,7 @@ class TplinkDecoApi:
         )
 
         data = self._decrypt_data(context, response_json.get("data", ""))
+        _log_raw(context, data)
         check_data_error_code(context, data)
 
         try:
