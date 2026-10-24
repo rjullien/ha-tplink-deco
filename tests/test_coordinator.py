@@ -572,6 +572,77 @@ async def test_suspicious_client_list_failure_keeps_old_data_and_session(
 
 
 @pytest.mark.asyncio
+async def test_suspicious_client_list_cap_creates_and_clears_repair_issue(
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        "custom_components.tplink_deco.coordinator.dt_util.utcnow",
+        lambda: fixed_now,
+    )
+    create_issue = MagicMock()
+    delete_issue = MagicMock()
+    monkeypatch.setattr(
+        "custom_components.tplink_deco.coordinator.async_create_issue",
+        create_issue,
+    )
+    monkeypatch.setattr(
+        "custom_components.tplink_deco.coordinator.async_delete_issue",
+        delete_issue,
+    )
+    api = MagicMock()
+    api.async_list_clients = AsyncMock(
+        side_effect=[
+            [],
+            [
+                {"mac": f"22:33:44:55:66:{index:02X}", "name": "Phone"}
+                for index in range(5)
+            ],
+        ]
+    )
+    old_clients = _old_online_clients(10, "AA:BB:CC:DD:EE:01", fixed_now)
+    coordinator, _master = _make_client_coordinator(api, old_clients)
+    coordinator._suspicious_client_list_since = fixed_now - timedelta(minutes=30)
+
+    data = await coordinator._async_update_data()
+
+    assert api.async_list_clients.await_count == 1
+    assert coordinator.health.suspect_client_list_count == 1
+    assert coordinator._suspicious_client_list_issue_open is True
+    create_issue.assert_called_once()
+    assert create_issue.call_args.kwargs["translation_key"] == "suspicious_client_list"
+    assert data.keys() == old_clients.keys()
+    assert all(data[mac] is old_clients[mac] for mac in old_clients)
+
+    coordinator.data = data
+    await coordinator._async_update_data()
+
+    assert api.async_list_clients.await_count == 2
+    assert coordinator._suspicious_client_list_since is None
+    assert coordinator._suspicious_client_list_issue_open is False
+    delete_issue.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_first_client_list_without_baseline_is_accepted():
+    api = MagicMock()
+    api.async_list_clients = AsyncMock(
+        return_value=[
+            {"mac": f"22:33:44:55:66:{index:02X}", "name": "Phone"}
+            for index in range(7)
+        ]
+    )
+    coordinator, _master = _make_client_coordinator(api)
+
+    data = await coordinator._async_update_data()
+
+    assert len(data) == 7
+    assert api.async_list_clients.await_count == 1
+    assert coordinator.health.suspect_client_list_count == 0
+    assert coordinator._suspicious_client_list_since is None
+
+
+@pytest.mark.asyncio
 async def test_client_coordinator_empty_node_retains_online_clients(monkeypatch):
     fixed_now = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
     monkeypatch.setattr(

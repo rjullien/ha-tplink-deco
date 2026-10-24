@@ -116,6 +116,8 @@ Configurable:
 - Retry a suspiciously small Deco client list once without clearing or replacing the current session; preserve the previous client state if the retry remains suspicious.
 - Treat an empty per-node client list as a failed read when at least three previously online clients belong to that Deco.
 - Expose the suspicious client-list counter in coordinator health, diagnostics, and a health sensor.
+- After 30 consecutive minutes of suspicious client lists, accept the current list and create a repair issue; clear it when a normal list returns. The first poll has no baseline and is accepted.
+- Load: at most one extra client-list request per suspicious cycle before the 30-minute cap; normal cycles add zero requests.
 
 ---
 
