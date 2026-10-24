@@ -17,6 +17,7 @@ from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api import TplinkDecoApi
@@ -40,6 +41,7 @@ class CoordinatorHealth:
     last_successful_update: datetime | None = None
     response_time_ms: int | None = None
     timeout_count: int = 0
+    suspect_client_list_count: int = 0
     consecutive_failures: int = 0
     last_error: str = "0"
 
@@ -486,6 +488,7 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         utc_point_in_time = dt_util.utcnow()
 
         failed_deco_macs = set()
+        per_node_results = False
         should_try_per_node = (
             not self._use_global_client_query
             or monotonic() >= self._next_per_node_probe
@@ -496,6 +499,7 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
                 await self._async_list_clients_per_deco(deco_macs)
             )
             if deco_client_responses:
+                per_node_results = True
                 if self._use_global_client_query:
                     _LOGGER.info(
                         "Per-node client_list recovered; leaving global fallback"
@@ -515,6 +519,44 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         else:
             deco_macs, responses = await self._async_list_clients_global()
             deco_client_responses = list(zip(deco_macs, responses))
+
+        if per_node_results:
+            for deco_mac, deco_clients in deco_client_responses:
+                if (
+                    deco_clients is not None
+                    and not deco_clients
+                    and sum(
+                        client.online and client.deco_mac == deco_mac
+                        for client in old_clients.values()
+                    )
+                    >= 3
+                ):
+                    failed_deco_macs.add(deco_mac)
+
+        prev_online = sum(client.online for client in old_clients.values())
+        new_total = sum(
+            len(deco_clients or []) for _deco_mac, deco_clients in deco_client_responses
+        )
+        if prev_online >= 10 and new_total < 0.2 * prev_online:
+            self.health.suspect_client_list_count += 1
+            _LOGGER.warning(
+                "Suspicious client list (%d clients vs %d online before); retrying once",
+                new_total,
+                prev_online,
+            )
+            deco_macs, retry_responses = await self._async_list_clients_global()
+            retry_client_responses = list(zip(deco_macs, retry_responses))
+            retry_total = sum(
+                len(deco_clients or [])
+                for _deco_mac, deco_clients in retry_client_responses
+            )
+            if retry_total < 0.2 * prev_online:
+                raise UpdateFailed(
+                    f"Suspicious client list: {retry_total} clients vs "
+                    f"{prev_online} online before"
+                )
+            deco_client_responses = retry_client_responses
+            failed_deco_macs.clear()
 
         if len(deco_client_responses) > 0:
             for deco_mac, deco_clients in deco_client_responses:

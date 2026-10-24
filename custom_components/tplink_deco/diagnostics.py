@@ -46,6 +46,7 @@ def _coordinator_diagnostics(coordinator) -> dict[str, Any]:
         ),
         "response_time_ms": health.response_time_ms,
         "timeout_count": health.timeout_count,
+        "suspect_client_list_count": health.suspect_client_list_count,
         "consecutive_failures": health.consecutive_failures,
         "last_error": health.last_error,
         "update_interval_seconds": (

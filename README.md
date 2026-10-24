@@ -111,6 +111,14 @@ Configurable:
 >
 > **HACS depuis v3.14.x :** `3.10.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
 
+### v3.11.0.1
+
+- Retry a suspiciously small Deco client list once without clearing or replacing the current session; preserve the previous client state if the retry remains suspicious.
+- Treat an empty per-node client list as a failed read when at least three previously online clients belong to that Deco.
+- Expose the suspicious client-list counter in coordinator health, diagnostics, and a health sensor.
+
+---
+
 ### v3.11.0.0
 
 - Sync upstream v3.11.0: optional client device linking to network devices (#605), backhaul BSSIDs (#595), client tracker devices named after the client (#600)
