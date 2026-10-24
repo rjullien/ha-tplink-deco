@@ -400,6 +400,9 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         )
         # Must happen after super().__init__
         self.data = {} if data is None else data
+        self._suspicious_client_list_issue_id = (
+            f"{SUSPICIOUS_CLIENT_LIST_ISSUE_ID}_{config_entry.entry_id}"
+        )
         self.has_successful_refresh = False
         self._use_global_client_query = False
         self._next_per_node_probe = 0.0
@@ -549,7 +552,11 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         if self._suspicious_client_list_issue_open:
             baseline = self._suspicious_baseline or prev_online
             if new_total >= 0.2 * baseline:
-                async_delete_issue(self.hass, DOMAIN, SUSPICIOUS_CLIENT_LIST_ISSUE_ID)
+                async_delete_issue(
+                    self.hass,
+                    DOMAIN,
+                    self._suspicious_client_list_issue_id,
+                )
                 self._suspicious_client_list_issue_open = False
                 self._suspicious_client_list_since = None
                 self._suspicious_baseline = None
@@ -578,12 +585,13 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
                     async_create_issue(
                         self.hass,
                         DOMAIN,
-                        SUSPICIOUS_CLIENT_LIST_ISSUE_ID,
+                        self._suspicious_client_list_issue_id,
                         is_fixable=False,
                         severity=IssueSeverity.WARNING,
                         translation_key=SUSPICIOUS_CLIENT_LIST_ISSUE_ID,
                     )
                     self._suspicious_client_list_issue_open = True
+                failed_deco_macs.clear()
             else:
                 _LOGGER.warning(
                     "Suspicious client list (%d clients vs %d online before); "

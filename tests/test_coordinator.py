@@ -617,6 +617,7 @@ async def test_suspicious_client_list_issue_persists_until_baseline_recovery(
     assert coordinator._suspicious_client_list_issue_open is True
     assert coordinator._suspicious_baseline == 50
     create_issue.assert_called_once()
+    assert create_issue.call_args.args[2] == "suspicious_client_list_test_entry"
     assert create_issue.call_args.kwargs["translation_key"] == "suspicious_client_list"
     assert data.keys() == old_clients.keys()
     assert all(data[mac] is old_clients[mac] for mac in old_clients)
@@ -637,6 +638,46 @@ async def test_suspicious_client_list_issue_persists_until_baseline_recovery(
     assert coordinator._suspicious_client_list_since is None
     assert coordinator._suspicious_baseline is None
     delete_issue.assert_called_once()
+    assert delete_issue.call_args.args[2] == "suspicious_client_list_test_entry"
+
+
+@pytest.mark.asyncio
+async def test_suspicious_client_list_cap_expires_stale_clients_and_stops_counter(
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        "custom_components.tplink_deco.coordinator.dt_util.utcnow",
+        lambda: fixed_now,
+    )
+    create_issue = MagicMock()
+    monkeypatch.setattr(
+        "custom_components.tplink_deco.coordinator.async_create_issue",
+        create_issue,
+    )
+    api = MagicMock()
+    api.async_list_clients = AsyncMock(return_value=[])
+    old_clients = _old_online_clients(
+        50,
+        "AA:BB:CC:DD:EE:01",
+        fixed_now - timedelta(hours=3),
+    )
+    coordinator, _master = _make_client_coordinator(api, old_clients)
+    coordinator._suspicious_client_list_since = fixed_now - timedelta(minutes=30)
+    coordinator._suspicious_baseline = 50
+
+    data = await coordinator._async_update_data()
+
+    assert all(client.online is False for client in data.values())
+    assert coordinator.health.suspect_client_list_count == 1
+    assert coordinator._suspicious_client_list_issue_open is True
+    create_issue.assert_called_once()
+
+    coordinator.data = data
+    next_data = await coordinator._async_update_data()
+
+    assert all(client.online is False for client in next_data.values())
+    assert coordinator.health.suspect_client_list_count == 1
 
 
 @pytest.mark.asyncio
