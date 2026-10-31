@@ -16,7 +16,7 @@ if id[0] != DOMAIN:  # TypeError: 'NoneType' object is not subscriptable
 
 New helper `deco_mac_from_identifiers()` returns the `(DOMAIN, mac)` identifier however many identifiers the device has, or `None`. The service now fails with the clear "does not have tplink_deco MAC identifier" error only when no Deco identifier exists.
 
-`__init__.py`: +8/−4, plus `tests/test_device_identifiers.py` (3 tests: single identifier, Deco identifier among several, no Deco identifier → `None`). The tests error out on current main (helper absent); all pass with the change.
+`__init__.py`: +11/−4, plus `tests/test_device_identifiers.py` (3 tests: single identifier, Deco identifier among several, no Deco identifier → `None`). The tests error out on current main (helper absent); all pass with the change.
 
 ```
 pip install -r requirements.txt pycryptodome pytest pytest-asyncio
