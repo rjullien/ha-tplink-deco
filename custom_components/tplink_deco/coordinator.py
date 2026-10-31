@@ -38,6 +38,8 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 GLOBAL_FALLBACK_PROBE_INTERVAL_SECONDS = 300
 SUSPICIOUS_CLIENT_LIST_RETRY_WINDOW = timedelta(minutes=30)
 SUSPICIOUS_CLIENT_LIST_ISSUE_ID = "suspicious_client_list"
+CLIENT_BACKOFF_INITIAL_SECONDS = 30
+CLIENT_BACKOFF_MAX_SECONDS = 300
 
 
 @dataclass
@@ -64,6 +66,13 @@ class CoordinatorHealth:
         self.last_error = type(err).__name__
         if isinstance(err, TimeoutException):
             self.timeout_count += 1
+
+    def record_backoff(self, started: float, err: Exception | None = None) -> None:
+        """Record coordinator backoff without marking update as successful."""
+        self.response_time_ms = round((monotonic() - started) * 1000)
+        self.consecutive_failures += 1
+        if err is not None:
+            self.last_error = type(err).__name__
 
 
 def coerce_float(value):
@@ -387,10 +396,14 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
         config_entry: ConfigEntry,
         update_interval: timedelta = None,
         data: TpLinkDecoData = None,
+        device_list_interval_seconds: int = 30,
     ) -> None:
         """Initialize."""
         self.api = api
         self._on_close: list[Callable] = []
+        self.device_list_interval_seconds = device_list_interval_seconds
+        self._last_device_list_update: float | None = None
+        self._force_device_list_refresh = False
 
         super().__init__(
             hass,
@@ -407,7 +420,7 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Update data via api."""
-        if self.paused:
+        if self.paused and not self._force_device_list_refresh:
             _LOGGER.debug("Deco polling is paused")
             return self.data
 
@@ -429,10 +442,31 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data_internal(self):
         """Fetch and process Deco data."""
 
-        new_decos = await async_call_and_propagate_config_error(
-            self.api.async_list_devices
-        )
+        if self._device_list_refresh_due():
+            device_list_started = monotonic()
+            _LOGGER.debug("device_list request started")
+            try:
+                new_decos = await async_call_and_propagate_config_error(
+                    self.api.async_list_devices
+                )
+            except Exception:
+                _LOGGER.debug(
+                    "device_list request failed duration_seconds=%.3f",
+                    monotonic() - device_list_started,
+                )
+                raise
+            self._process_device_list(new_decos)
+            self._last_device_list_update = monotonic()
+            self._force_device_list_refresh = False
+            _LOGGER.debug(
+                "device_list request completed duration_seconds=%.3f",
+                monotonic() - device_list_started,
+            )
+        else:
+            _LOGGER.debug("device_list request skipped")
 
+        performance_started = monotonic()
+        _LOGGER.debug("performance request started")
         # CPU/memory is diagnostic-only data: some firmwares do not expose the
         # performance endpoint at all, and others fail it while under load.
         # Losing it must not invalidate the mesh refresh, which the device
@@ -447,41 +481,22 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
             raise
         except Exception as err:
             _LOGGER.debug(
-                "Performance endpoint unavailable, "
-                "keeping previous CPU/memory values: %s",
+                "performance request failed duration_seconds=%.3f; "
+                "retaining previous values: %s",
+                monotonic() - performance_started,
                 err,
             )
-
-        old_decos = self.data.decos
-        master_deco = None
-        deco_added = False
-        decos = {}
-        for new_deco in new_decos:
-            mac = new_deco["mac"]
-            deco = old_decos.get(mac)
-            if deco is None:
-                deco_added = True
-                deco = TpLinkDeco(mac)
-                _LOGGER.debug("_async_update_data: Found new deco mac=%s", deco.mac)
-            deco.update(new_deco)
-            decos[mac] = deco
-            if deco.master:
-                master_deco = deco
-
-        for mac, old_deco in old_decos.items():
-            if mac not in decos:
-                _LOGGER.debug(
-                    "_async_update_data: Deco mac=%s not returned by API, marking offline",
-                    mac,
-                )
-                old_deco.online = False
-                old_deco.internet_online = False
-                decos[mac] = old_deco
+        else:
+            _LOGGER.debug(
+                "performance request completed duration_seconds=%.3f",
+                monotonic() - performance_started,
+            )
 
         # Zet globale performance data op de master Deco.
         # When the performance call failed, result stays empty so the existing
         # cpu_usage/mem_usage values are left untouched instead of being reset.
         result = performance_data.get("result", {}) if performance_data else {}
+        master_deco = self.data.master_deco
         if master_deco is not None:
             cpu_raw = result.get("cpu_usage")
             mem_raw = result.get("mem_usage")
@@ -510,6 +525,47 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
                 else:
                     master_deco.mem_usage = round(mem_percent, 1)
 
+        return self.data
+
+    def _device_list_refresh_due(self) -> bool:
+        """Return whether device_list should be refreshed this cycle."""
+        if self._force_device_list_refresh or self._last_device_list_update is None:
+            return True
+        if self.device_list_interval_seconds == 0:
+            return False
+        return (
+            monotonic() - self._last_device_list_update
+            >= self.device_list_interval_seconds
+        )
+
+    def _process_device_list(self, new_decos: list[dict[str, Any]]) -> None:
+        """Update cached Deco data from a device_list response."""
+        old_decos = self.data.decos
+        master_deco = None
+        deco_added = False
+        decos = {}
+        for new_deco in new_decos:
+            mac = new_deco["mac"]
+            deco = old_decos.get(mac)
+            if deco is None:
+                deco_added = True
+                deco = TpLinkDeco(mac)
+                _LOGGER.debug("_async_update_data: Found new deco mac=%s", deco.mac)
+            deco.update(new_deco)
+            decos[mac] = deco
+            if deco.master:
+                master_deco = deco
+
+        for mac, old_deco in old_decos.items():
+            if mac not in decos:
+                _LOGGER.debug(
+                    "_async_update_data: Deco mac=%s not returned by API, marking offline",
+                    mac,
+                )
+                old_deco.online = False
+                old_deco.internet_online = False
+                decos[mac] = old_deco
+
         if deco_added:
             # Defer the dispatch until after the coordinator has committed
             # the new data. async_dispatcher_send runs @callback listeners
@@ -520,7 +576,12 @@ class TplinkDecoUpdateCoordinator(DataUpdateCoordinator):
                 async_dispatcher_send, self.hass, SIGNAL_DECO_ADDED
             )
 
-        return TpLinkDecoData(master_deco, decos)
+        self.data = TpLinkDecoData(master_deco, decos)
+
+    async def async_request_device_refresh(self) -> None:
+        """Request an immediate device_list refresh."""
+        self._force_device_list_refresh = True
+        await self.async_request_refresh()
 
     @callback
     def on_close(self, func: CALLBACK_TYPE) -> None:
@@ -571,6 +632,9 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
         self.has_successful_refresh = False
         self._use_global_client_query = False
         self._next_per_node_probe = 0.0
+        self._client_backoff_until = 0.0
+        self._client_backoff_seconds = 0.0
+        self._last_logged_500_error: str | None = None
         self.health = CoordinatorHealth()
         self._suspicious_client_list_since: datetime | None = None
         self._suspicious_baseline: int | None = None
@@ -580,6 +644,61 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
     def client_query_mode(self) -> str:
         """Return the client query strategy currently in use."""
         return "global_fallback" if self._use_global_client_query else "per_node"
+
+    @property
+    def is_backed_off(self) -> bool:
+        """Return whether client polling is currently backed off."""
+        return monotonic() < self._client_backoff_until
+
+    @property
+    def remaining_backoff_seconds(self) -> int:
+        """Return the remaining backoff time in seconds."""
+        remaining = self._client_backoff_until - monotonic()
+        return max(0, int(round(remaining)))
+
+    def _apply_client_backoff(
+        self, err: Exception, started: float | None = None
+    ) -> None:
+        """Apply capped exponential backoff on HTTP 500 response."""
+        if self._client_backoff_seconds <= 0.0:
+            self._client_backoff_seconds = float(CLIENT_BACKOFF_INITIAL_SECONDS)
+        else:
+            self._client_backoff_seconds = min(
+                self._client_backoff_seconds * 2,
+                float(CLIENT_BACKOFF_MAX_SECONDS),
+            )
+        self._client_backoff_until = monotonic() + self._client_backoff_seconds
+
+        status = getattr(err, "status", 500)
+        message = getattr(err, "message", "Internal Server Error")
+        error_key = f"{status}_{message}"
+
+        if self._last_logged_500_error != error_key:
+            _LOGGER.warning(
+                "Client list query returned HTTP %s (%s); backing off for %d seconds and preserving client states",
+                status,
+                message,
+                int(self._client_backoff_seconds),
+            )
+            self._last_logged_500_error = error_key
+        else:
+            _LOGGER.debug(
+                "Client list query returned HTTP %s (%s); backing off for %d seconds",
+                status,
+                message,
+                int(self._client_backoff_seconds),
+            )
+
+        if started is not None:
+            self.health.record_backoff(started, err)
+
+    def _reset_client_backoff(self) -> None:
+        """Reset exponential backoff after a successful response."""
+        if self._client_backoff_seconds > 0.0:
+            _LOGGER.info("Client list query recovered after HTTP 500 backoff")
+        self._client_backoff_seconds = 0.0
+        self._client_backoff_until = 0.0
+        self._last_logged_500_error = None
 
     async def _async_list_clients_per_deco(self, deco_macs: list[str]):
         """List clients per Deco without failing the complete refresh."""
@@ -635,7 +754,7 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
 
         started = monotonic()
         try:
-            data = await self._async_update_data_internal()
+            data = await self._async_update_data_internal(started)
         except Exception as err:
             self.health.record_failure(started, err)
             # DataUpdateCoordinator only notifies listeners on the first
@@ -645,15 +764,23 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
                 self.async_update_listeners()
             raise
 
-        self.health.record_success(started)
+        if not self.is_backed_off:
+            self.health.record_success(started)
         return data
 
-    async def _async_update_data_internal(self):
+    async def _async_update_data_internal(self, started: float | None = None):
         """Fetch and process client data."""
         if len(self._deco_update_coordinator.data.decos) == 0:
             # Return the existing data instead of None: returning None would
             # replace self.data and crash the next cycle and every sensor
             # that iterates self.coordinator.data.values().
+            return self.data
+        if self.is_backed_off:
+            _LOGGER.debug(
+                "Client polling is backed off until %.1f (%ds remaining); preserving previous client states",
+                self._client_backoff_until,
+                self.remaining_backoff_seconds,
+            )
             return self.data
 
         old_clients = self.data
@@ -670,10 +797,12 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
             or monotonic() >= self._next_per_node_probe
         )
 
+        server_500_error = None
         if should_try_per_node:
-            deco_client_responses, failed_deco_macs = (
-                await self._async_list_clients_per_deco(deco_macs)
-            )
+            (
+                deco_client_responses,
+                failed_deco_macs,
+            ) = await self._async_list_clients_per_deco(deco_macs)
             if deco_client_responses:
                 per_node_results = True
                 if self._use_global_client_query:
@@ -689,12 +818,30 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug(
                     "All per-node client_list queries failed; using global fallback"
                 )
+                try:
+                    deco_macs, responses = await self._async_list_clients_global()
+                    deco_client_responses = list(zip(deco_macs, responses))
+                    failed_deco_macs.clear()
+                except aiohttp.ClientResponseError as err:
+                    if err.status < 500:
+                        raise
+                    server_500_error = err
+                    deco_client_responses = []
+        else:
+            try:
                 deco_macs, responses = await self._async_list_clients_global()
                 deco_client_responses = list(zip(deco_macs, responses))
-                failed_deco_macs.clear()
-        else:
-            deco_macs, responses = await self._async_list_clients_global()
-            deco_client_responses = list(zip(deco_macs, responses))
+            except aiohttp.ClientResponseError as err:
+                if err.status < 500:
+                    raise
+                server_500_error = err
+                deco_client_responses = []
+
+        if server_500_error is not None:
+            self._apply_client_backoff(server_500_error, started)
+            return self.data
+
+        self._reset_client_backoff()
 
         if per_node_results:
             for deco_mac, deco_clients in deco_client_responses:
@@ -764,7 +911,13 @@ class TplinkDecoClientUpdateCoordinator(DataUpdateCoordinator):
                     new_total,
                     prev_online,
                 )
-                deco_macs, retry_responses = await self._async_list_clients_global()
+                try:
+                    deco_macs, retry_responses = await self._async_list_clients_global()
+                except aiohttp.ClientResponseError as err:
+                    if err.status < 500:
+                        raise
+                    self._apply_client_backoff(err, started)
+                    return self.data
                 retry_client_responses = list(zip(deco_macs, retry_responses))
                 retry_total = sum(
                     len(deco_clients or [])

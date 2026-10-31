@@ -92,6 +92,21 @@ Configurable:
 - during setup
 - via Home Assistant UI (select entity)
 
+#### Deco status polling
+
+`device_list` polling can be configured independently from client and
+performance polling in the integration options. Enter an interval of at least
+10 seconds, or use `0` to run `device_list` only during integration startup.
+
+When automatic Deco status polling is disabled, client tracking and performance
+updates continue normally. Deco online state, topology changes, and newly added
+Deco nodes are refreshed only after reloading the integration or pressing the
+`Refresh Deco status` button.
+
+Some Deco firmware, including reported X20 firmware, may briefly interrupt
+wireless-backhaul traffic while processing `device_list`. A longer interval or
+startup-only mode can mitigate this firmware behavior.
+
 ---
 
 #### Benefits
@@ -105,11 +120,18 @@ Configurable:
 
 ## 📝 Changelog
 
-> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.11.0** (commit `cfb2a2a`, 2026-10-14). Fork-specific improvements (session lock, extended polling, security audit) are preserved on top.
+> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.12.2** (commit `8af520f`, 2026-10-29). Fork-specific safeguards for session recovery, request serialization, presence, polling, diagnostics, and security are preserved on top.
 >
 > **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.10.5.0` = upstream 3.10.5, fork rev 0).
 >
 > **HACS depuis v3.14.x :** `3.10.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
+
+### v3.12.2.0
+
+- Align with upstream v3.12.2, including independent Deco status polling (#616), restored disconnected clients (#619), authenticated session recovery (#620), HTTP 500 client-poll backoff (#624), and zero throughput for disconnected clients (#629).
+- Preserve fork safeguards for transient-session retention, presence recovery, serialized requests, extended polling, diagnostics, and credential-safe logging.
+
+---
 
 ### v3.11.0.4
 
@@ -315,6 +337,7 @@ Configurable:
 
 - `switch.deco_polling`
 - `select.polling_interval`
+- `button.refresh_deco_status`
 
 ### Diagnostics
 

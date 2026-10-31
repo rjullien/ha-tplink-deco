@@ -7,11 +7,12 @@ from homeassistant.components.device_tracker.const import CONF_SCAN_INTERVAL
 from custom_components.tplink_deco.config_flow import SCAN_INTERVAL_OPTIONS
 from custom_components.tplink_deco.config_flow import _ensure_user_input_optionals
 from custom_components.tplink_deco.config_flow import _get_scan_interval
-from custom_components.tplink_deco.config_flow import _normalize_scan_interval
+from custom_components.tplink_deco.config_flow import _normalize_intervals
 from custom_components.tplink_deco.const import CONF_CLIENT_POSTFIX
 from custom_components.tplink_deco.const import CONF_CLIENT_PREFIX
 from custom_components.tplink_deco.const import CONF_DECO_POSTFIX
 from custom_components.tplink_deco.const import CONF_DECO_PREFIX
+from custom_components.tplink_deco.const import CONF_DEVICE_LIST_INTERVAL
 from custom_components.tplink_deco.const import DEFAULT_SCAN_INTERVAL
 
 
@@ -34,10 +35,11 @@ def test_get_scan_interval_invalid_falls_back_to_default():
     )
 
 
-def test_normalize_scan_interval_converts_string():
-    data = {CONF_SCAN_INTERVAL: "240"}
-    _normalize_scan_interval(data)
+def test_normalize_intervals_converts_string_values():
+    data = {CONF_SCAN_INTERVAL: "240", CONF_DEVICE_LIST_INTERVAL: "0"}
+    _normalize_intervals(data)
     assert data[CONF_SCAN_INTERVAL] == 240
+    assert data[CONF_DEVICE_LIST_INTERVAL] == 0
 
 
 def test_get_scan_interval_accepts_fork_extended_option():
