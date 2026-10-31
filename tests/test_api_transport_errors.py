@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -16,6 +17,7 @@ from custom_components.tplink_deco.api import TplinkDecoApi
 from custom_components.tplink_deco.api import aes_encrypt
 from custom_components.tplink_deco.exceptions import EmptyDataException
 from custom_components.tplink_deco.exceptions import TransientConnectionException
+from custom_components.tplink_deco.exceptions import UnexpectedApiException
 
 
 @pytest.fixture
@@ -82,7 +84,12 @@ async def test_async_post_server_disconnected_keeps_auth(api, mock_session):
     mock_session.post.side_effect = aiohttp.ServerDisconnectedError()
 
     with pytest.raises(TransientConnectionException):
-        await api._async_post("List Devices", f"{api._host}/path", params={}, data="x")
+        await api._async_post(
+            "List Devices",
+            f"{api._host}/cgi-bin/luci/;stok={api._stok}/path",
+            params={},
+            data="x",
+        )
 
     _assert_authenticated(api)
 
@@ -343,7 +350,12 @@ async def test_async_post_session_expired_error_code_clears_auth(api, mock_sessi
     ]
 
     with pytest.raises(EmptyDataException):
-        await api._async_post("List Devices", f"{api._host}/path", params={}, data="x")
+        await api._async_post(
+            "List Devices",
+            f"{api._host}/cgi-bin/luci/;stok={api._stok}/path",
+            params={},
+            data="x",
+        )
 
     assert api._stok is None
     assert api._cookie is None
@@ -403,3 +415,117 @@ async def test_outer_session_expired_error_code_relogs_in(api, mock_session):
     assert result == []
     assert state["outer_logins"] == 1
     assert api._outer_id == "fresh-id"
+
+
+@pytest.mark.asyncio
+async def test_authenticated_top_level_5002_clears_auth(api, mock_session):
+    _authenticate(api)
+    mock_session.post.return_value = _response({"error_code": -5002})
+
+    with pytest.raises(EmptyDataException):
+        await api._async_post(
+            "List Devices",
+            f"{api._host}/cgi-bin/luci/;stok={api._stok}/admin/device",
+            params={"form": "device_list"},
+            data="payload",
+        )
+
+    assert api._stok is None
+    assert api._cookie is None
+    assert api._seq is None
+
+
+@pytest.mark.asyncio
+async def test_login_top_level_5002_is_not_treated_as_expired_session(
+    api, mock_session
+):
+    mock_session.post.return_value = _response({"error_code": -5002})
+
+    with pytest.raises(UnexpectedApiException):
+        await api._async_post(
+            "Login",
+            f"{api._host}/cgi-bin/luci/;stok=/login",
+            params={"form": "login"},
+            data="payload",
+        )
+
+
+@pytest.mark.asyncio
+async def test_encrypted_5002_relogs_in_once(api):
+    _authenticate(api)
+    api._encode_payload = MagicMock(return_value="payload")
+    api._async_post = AsyncMock(return_value={"data": "encrypted"})
+    api._decrypt_data = MagicMock(
+        side_effect=[
+            {"error_code": -5002},
+            {"error_code": 0, "result": {"device_list": []}},
+        ]
+    )
+
+    async def login():
+        _authenticate(api)
+
+    api.async_login = AsyncMock(side_effect=login)
+
+    assert await api.async_list_devices() == []
+    api.async_login.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_outer_top_level_5002_relogs_in_once(api, mock_session):
+    stale_response = base64.b64encode(
+        aes_encrypt(
+            b"0123456789abcdef",
+            b"abcdef0123456789",
+            json.dumps({"result": {}, "error_code": -5002}).encode(),
+        )
+    ).decode()
+    state = _setup_outer_recovery(
+        api, mock_session, stale_response=lambda: _outer_response(stale_response)
+    )
+
+    with pytest.raises(aiohttp.ClientConnectorError):
+        await api.async_list_devices()
+
+    assert await api.async_list_devices() == []
+    assert state["outer_logins"] == 1
+    assert api._outer_id == "fresh-id"
+
+
+@pytest.mark.asyncio
+async def test_authenticated_http_500_clears_auth_session(api, mock_session, caplog):
+    """Test that HTTP 500 clears auth while logging without session secrets."""
+    _authenticate(api)
+    saved_stok = api._stok
+    saved_cookie = api._cookie
+    caplog.set_level(logging.DEBUG, logger="custom_components.tplink_deco.api")
+
+    response = _response({})
+    response.status = 500
+    request_info = MagicMock()
+    request_info.real_url = (
+        f"{api._host}/cgi-bin/luci/;stok={saved_stok}/admin/client?form=client_list"
+    )
+    response.raise_for_status.side_effect = aiohttp.ClientResponseError(
+        request_info=request_info,
+        history=(),
+        status=500,
+        message="Internal Server Error",
+    )
+    mock_session.post.return_value = response
+
+    with pytest.raises(aiohttp.ClientResponseError):
+        await api._async_post(
+            "List Clients",
+            f"{api._host}/cgi-bin/luci/;stok={api._stok}/admin/client",
+            params={"form": "client_list"},
+            data="payload",
+        )
+
+    assert api._stok is None
+    assert api._cookie is None
+    assert api._seq is None
+    assert "HTTP 500 (Internal Server Error)" in caplog.text
+    assert saved_stok not in caplog.text
+    assert saved_cookie not in caplog.text
+    assert ";stok=" not in caplog.text

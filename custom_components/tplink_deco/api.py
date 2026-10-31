@@ -237,7 +237,7 @@ class TplinkDecoApi:
         )
         data = self._decrypt_data(context, response_json.get("data", ""))
         _log_raw(context, data)
-        check_data_error_code(context, data)
+        self._check_authenticated_data_error_code(context, data)
 
         try:
             device_list = data["result"]["device_list"]
@@ -278,7 +278,7 @@ class TplinkDecoApi:
 
         data = self._decrypt_data(context, response_json.get("data", ""))
         _log_raw(context, data)
-        check_data_error_code(context, data)
+        self._check_authenticated_data_error_code(context, data)
         _LOGGER.debug("Rebooted decos %s", deco_macs)
 
     # Return performance data (CPU / memory)
@@ -300,7 +300,7 @@ class TplinkDecoApi:
 
         data = self._decrypt_data(context, response_json.get("data", ""))
         _log_raw(context, data)
-        check_data_error_code(context, data)
+        self._check_authenticated_data_error_code(context, data)
         return data
 
     # Return list of clients. Default lists clients for all decos.
@@ -327,7 +327,7 @@ class TplinkDecoApi:
 
         data = self._decrypt_data(context, response_json.get("data", ""))
         _log_raw(context, data)
-        check_data_error_code(context, data)
+        self._check_authenticated_data_error_code(context, data)
 
         try:
             client_list = data["result"]["client_list"]
@@ -645,6 +645,9 @@ class TplinkDecoApi:
         params: dict[str, Any],
         data: Any,
     ) -> dict:
+        authenticated_request = self._outer_id is not None or (
+            self._stok not in (None, "") and f";stok={self._stok}/" in url
+        )
         if self._outer_id is not None:
             luci_prefix = f"{self._host}/cgi-bin/luci/;stok={self._stok}"
             if url.startswith(luci_prefix):
@@ -739,16 +742,12 @@ class TplinkDecoApi:
                     response_json = await response.json(content_type=None)
                 if not isinstance(response_json, dict):
                     raise EmptyDataException(f"{context} response is not a JSON object")
-                if response_json.get("error_code") == -5002:
-                    # Session expired mid-use: same as an empty response,
-                    # clear auth so the retry logs in again once.
+                error_code = response_json.get("error_code")
+                if error_code == -5002 and authenticated_request:
                     self.clear_auth()
                     raise EmptyDataException(
-                        f"{context} session expired, error_code=-5002"
+                        f"{context} session expired, error_code={error_code}"
                     )
-                # Reuse check_data_error_code so a top-level
-                # error_code="timeout" raises TimeoutException (and is
-                # retried) instead of an UnexpectedApiException.
                 check_data_error_code(context, response_json)
 
                 if self._outer_id is not None:
@@ -761,17 +760,29 @@ class TplinkDecoApi:
             )
             raise TimeoutException from err
         except aiohttp.ClientResponseError as err:
-            _LOGGER.error(
-                "%s client response error: %s",
-                context,
-                err,
-            )
+            is_client_list = params is not None and params.get("form") == "client_list"
+            if err.status >= 500 and is_client_list:
+                _LOGGER.debug(
+                    "%s server response error: HTTP %s (%s)",
+                    context,
+                    err.status,
+                    err.message,
+                )
+            else:
+                _LOGGER.error(
+                    "%s client response error: HTTP %s (%s)",
+                    context,
+                    err.status,
+                    err.message,
+                )
             if err.status == 401:
                 self.clear_auth()
                 raise err
             if err.status == 403:
                 self.clear_auth()
-                message = f"{context} Forbidden error: {err}"
+                message = (
+                    f"{context} Forbidden error: HTTP {err.status} ({err.message})"
+                )
                 raise ForbiddenException(message) from err
             if err.status >= 500:
                 # Server error (502 Bad Gateway, etc.) — clear auth and retry
@@ -881,6 +892,16 @@ class TplinkDecoApi:
                 _LOGGER.debug("Logout failed (best effort): %s", err)
             finally:
                 self.clear_auth()
+
+    def _check_authenticated_data_error_code(self, context: str, data: dict) -> None:
+        """Check an authenticated response and recover from an expired session."""
+        error_code = data.get("error_code") or data.get("errorcode")
+        if error_code == -5002:
+            self.clear_auth()
+            raise EmptyDataException(
+                f"{context} session expired, error_code={error_code}"
+            )
+        check_data_error_code(context, data)
 
     def _decrypt_data(self, context: str, data: str):
         if isinstance(data, dict):
