@@ -82,3 +82,8 @@ the startup update script. Activate it first: `source .venv/bin/activate`
   `performance`) is enough to complete the config flow and create
   `device_tracker`/sensor entities against `http://127.0.0.1:8080` with
   "Verify SSL" unchecked. See `tests/fixtures/` for the expected payload shapes.
+
+<!-- entire-agent:begin -->
+Read .entire/agent-guide.md for this repository's workflow, source inspection, and verification guidance.
+@.entire/agent-guide.md
+<!-- entire-agent:end -->
