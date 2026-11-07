@@ -2,10 +2,10 @@
 
 ## Summary
 
-Upstream does not log out when a config entry is unloaded or reloaded, leaving
-the admin session open on the Deco until it times out. Repeated reloads can
-therefore leave sessions allocated. This behavior has not been verified on
-hardware.
+The integration never logs out when a config entry is unloaded or reloaded
+(for example after an options change), so the admin session stays open on the
+Deco until it times out, and each reload logs in again. This comes from the code
+path; I have not inspected the router's session table to observe it.
 
 ## Change
 
