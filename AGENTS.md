@@ -84,6 +84,8 @@ the startup update script. Activate it first: `source .venv/bin/activate`
   "Verify SSL" unchecked. See `tests/fixtures/` for the expected payload shapes.
 
 <!-- entire-agent:begin -->
+
 Read .entire/agent-guide.md for this repository's workflow, source inspection, and verification guidance.
 @.entire/agent-guide.md
+
 <!-- entire-agent:end -->

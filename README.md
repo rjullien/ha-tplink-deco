@@ -26,6 +26,7 @@ This integration provides local polling control and diagnostics for TP-Link Deco
 - CPU usage (raw + smoothed)
 - Memory usage (raw + smoothed)
 - Backhaul and network diagnostics
+- Monthly mobile data usage on supported 4G/5G Deco firmware
 - Coordinator health (last successful update, response time, timeouts, query mode,
   and last error)
 
@@ -120,11 +121,19 @@ startup-only mode can mitigate this firmware behavior.
 
 ## 📝 Changelog
 
-> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.12.2** (commit `8af520f`, 2026-10-29). Fork-specific safeguards for session recovery, request serialization, presence, polling, diagnostics, and security are preserved on top.
+> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.14.2** (commit `9a5d99f`, 2026-11-05). Fork-specific safeguards for session recovery, request serialization, presence, polling, diagnostics, and security are preserved on top.
 >
 > **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.10.5.0` = upstream 3.10.5, fork rev 0).
 >
 > **HACS depuis v3.14.x :** `3.10.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
+
+### v3.14.2.0
+
+- Align with upstream v3.14.2, including wireless status sensors, optional SSID attributes, mobile data support, runtime Deco entities, and background initial client refresh.
+- Load: +1 request per wireless update interval to the master (wlan read; 300 s retry deferral on failure); mobile data is polled only on 4G/5G masters.
+- Preserve fork safeguards for session retention, request serialization and retries, presence restoration, health sensors, and secret-safe logging and diagnostics.
+
+---
 
 ### v3.12.2.0
 
@@ -343,8 +352,30 @@ startup-only mode can mitigate this firmware behavior.
 
 - CPU usage (raw + smoothed)
 - Memory usage (raw + smoothed)
+- Mobile data usage (only created when exposed by the firmware)
 
----
+### WiFi status
+
+- Main WiFi (disabled by default)
+- Guest WiFi
+- IoT WiFi
+
+Read-only binary sensors show whether the main, guest and IoT WiFi networks are
+enabled. Only networks exposed by the Deco firmware are created. The main WiFi
+sensor is disabled by default because most models do not allow that network to
+be switched off.
+
+Network names (SSIDs) are not exposed by default. Enable **Show WiFi network
+names on the WiFi status sensors** in the integration options to add them as
+attributes. A sensor shows a single `ssid` attribute when all bands use the same
+name, or one attribute per band (for example `ssid_band2_4` and `ssid_band5_1`)
+when the names differ. The attribute is omitted when no name is reported.
+Passwords are never exposed or logged.
+
+Wireless status uses the configured integration polling interval and does not
+delay integration setup when the optional endpoint is slow or unavailable.
+Changing WiFi settings is not supported because the local write API is not
+reliable across Deco models and firmware versions.
 
 ## 📦 Installation
 
@@ -444,6 +475,8 @@ target:
     - d7f96b1f312d83f195b35ecdfbb3b02b
 ```
 
+<!-- ha-marketplace:exclude-start -->
+
 {% if not installed %}
 
 ## Installation
@@ -466,6 +499,8 @@ Add custom repository: **`rjullien/ha-tplink-deco`** (category: Integration).
 6. Restart Home Assistant
 
 {% endif %}
+
+<!-- ha-marketplace:exclude-end -->
 
 ## Configuration (Important! Please Read)
 

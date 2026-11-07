@@ -117,6 +117,28 @@ async def test_async_post_payload_error_keeps_auth(api, mock_session):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method,args",
+    [
+        ("async_get_wireless", ("wlan",)),
+        ("async_get_mobile_data_usage", ()),
+    ],
+)
+async def test_optional_reads_client_connector_error_keeps_auth(
+    api, mock_session, method, args
+):
+    _authenticate(api)
+    api.async_login_if_needed = AsyncMock()
+    api._encode_payload = MagicMock(return_value="payload")
+    mock_session.post.side_effect = _connector_error()
+
+    with pytest.raises(aiohttp.ClientConnectorError):
+        await getattr(api, method)(*args)
+
+    _assert_authenticated(api)
+
+
+@pytest.mark.asyncio
 async def test_async_list_devices_retry_after_disconnect_does_not_relogin(
     api, mock_session
 ):
