@@ -121,7 +121,7 @@ startup-only mode can mitigate this firmware behavior.
 
 ## 📝 Changelog
 
-> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.14.2** (commit `9a5d99f`, 2026-11-07). Fork-specific safeguards for session recovery, request serialization, presence, polling, diagnostics, and security are preserved on top.
+> **Fork status:** Aligned with upstream [amosyuen/ha-tplink-deco](https://github.com/amosyuen/ha-tplink-deco) **v3.14.2** (commit `9a5d99f`, 2026-11-05). Fork-specific safeguards for session recovery, request serialization, presence, polling, diagnostics, and security are preserved on top.
 >
 > **Versioning:** `X.Y.Z.N` — `X.Y.Z` = upstream base, `N` = fork revision (e.g. `3.10.5.0` = upstream 3.10.5, fork rev 0).
 >
@@ -481,17 +481,7 @@ target:
 
 ## Installation
 
-### Marketplace / HACS
-
-For Home Assistant 2026.11 and later:
-
-1. Open **Settings > Marketplace**.
-2. Search for **TP-Link Deco**.
-3. Select the integration and choose **Install**.
-
-For Home Assistant 2026.10 and earlier, follow the same steps under **HACS > Integrations**.
-
-The button below opens this repository in Marketplace on Home Assistant 2026.11 and later, and in HACS on older versions:
+### HACS (this fork)
 
 Add custom repository: **`rjullien/ha-tplink-deco`** (category: Integration).
 

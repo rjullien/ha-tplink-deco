@@ -68,14 +68,11 @@ Le firmware Deco a peu de sessions admin. Chaque re-login en crée une ; trop de
 
 ### Restauration upstream #619 — état des trackers
 
-Les trackers restaurés avec `ATTR_DEVICE_TYPE=client` gardent le comportement C4 du
-fork. Pour un état restauré sans `ATTR_DEVICE_TYPE`, le fork précédent ne créait pas
-de client; upstream le crée comme client provisoire avec `online=False`, donc son
-`TplinkDecoClientDeviceTracker.is_connected` renvoie `False` et l'entité disponible
-est `not_home` (au lieu d'être recréée par l'intégration). Le premier refresh mesh
-retire ensuite de cette liste les MAC reconnues comme Decos. Les états restaurés
-`home` et `not_home` restent présents et disponibles jusqu'au premier refresh client
-réussi; un état déjà `unavailable` reste indisponible.
+Tout client restauré, y compris sans `ATTR_DEVICE_TYPE`, reprend la présence stockée :
+`online` vaut `True` uniquement si l'état est `home`. Sa disponibilité suit l'état
+restauré (`unavailable`/`unknown` restent indisponibles) jusqu'au premier refresh
+client réussi. Les entrées sans type sont retirées si ce refresh identifie leur MAC
+comme un Deco.
 
 ## Checklist d'un sync upstream
 
