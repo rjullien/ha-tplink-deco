@@ -464,6 +464,15 @@ class TplinkDecoClientDeviceTracker(CoordinatorEntity, RestoreEntity, ScannerEnt
         return self._client.online
 
     @property
+    def available(self) -> bool:
+        """Keep restored tracker state visible until the first client refresh."""
+        if not self.coordinator.has_successful_refresh:
+            restored_available = self._client.restored_state_available
+            if restored_available is not None:
+                return restored_available
+        return super().available
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
         deco = self._coordinator_decos.data.decos.get(self._attr_deco_mac)

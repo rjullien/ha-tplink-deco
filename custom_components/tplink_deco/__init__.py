@@ -20,6 +20,9 @@ from homeassistant.const import ATTR_DEVICE_ID
 from homeassistant.const import CONF_HOST
 from homeassistant.const import CONF_PASSWORD
 from homeassistant.const import CONF_USERNAME
+from homeassistant.const import STATE_HOME
+from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import HomeAssistantError
@@ -39,14 +42,18 @@ from .const import CONF_CLIENT_PREFIX
 from .const import CONF_DECO_POSTFIX
 from .const import CONF_DECO_PREFIX
 from .const import CONF_DEVICE_LIST_INTERVAL
+from .const import CONF_EXPOSE_WIFI_SSIDS
 from .const import CONF_LINK_CLIENT_DEVICES
 from .const import CONF_TIMEOUT_ERROR_RETRIES
 from .const import CONF_TIMEOUT_SECONDS
 from .const import CONF_VERIFY_SSL
 from .const import COORDINATOR_CLIENTS_KEY
 from .const import COORDINATOR_DECOS_KEY
+from .const import COORDINATOR_MOBILE_KEY
+from .const import COORDINATOR_WIRELESS_KEY
 from .const import DEFAULT_CONSIDER_HOME
 from .const import DEFAULT_DECO_POSTFIX
+from .const import DEFAULT_EXPOSE_WIFI_SSIDS
 from .const import DEFAULT_LINK_CLIENT_DEVICES
 from .const import DEFAULT_SCAN_INTERVAL
 from .const import DEFAULT_TIMEOUT_ERROR_RETRIES
@@ -62,6 +69,8 @@ from .coordinator import TpLinkDecoClient
 from .coordinator import TpLinkDecoData
 from .coordinator import TplinkDecoClientUpdateCoordinator
 from .coordinator import TplinkDecoUpdateCoordinator
+from .mobile import TplinkDecoMobileDataUpdateCoordinator
+from .wireless import TplinkDecoWirelessUpdateCoordinator
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -72,6 +81,14 @@ def _remove_discovered_decos_from_clients(
     """Remove provisional clients identified as Decos by the first refresh."""
     for deco_mac in deco_data.decos:
         client_data.pop(deco_mac, None)
+
+
+def deco_mac_from_identifiers(identifiers) -> str | None:
+    """Return the Deco MAC of a device from its registry identifiers."""
+    return next(
+        (identifier[1] for identifier in identifiers if identifier[0] == DOMAIN),
+        None,
+    )
 
 
 async def async_create_and_refresh_coordinators(
@@ -120,10 +137,25 @@ async def async_create_and_refresh_coordinators(
         update_interval,
         client_data,
     )
-
+    wireless_coordinator = TplinkDecoWirelessUpdateCoordinator(
+        hass,
+        api,
+        config_entry,
+        deco_coordinator,
+        update_interval,
+        config_data.get(CONF_EXPOSE_WIFI_SSIDS, DEFAULT_EXPOSE_WIFI_SSIDS),
+    )
+    mobile_coordinator = TplinkDecoMobileDataUpdateCoordinator(
+        hass,
+        api,
+        config_entry,
+        deco_coordinator,
+    )
     return {
         COORDINATOR_DECOS_KEY: deco_coordinator,
         COORDINATOR_CLIENTS_KEY: clients_coordinator,
+        COORDINATOR_MOBILE_KEY: mobile_coordinator,
+        COORDINATOR_WIRELESS_KEY: wireless_coordinator,
     }
 
 
@@ -178,6 +210,13 @@ async def async_create_config_data(hass: HomeAssistant, config_entry: ConfigEntr
         else:
             client = TpLinkDecoClient(entry.unique_id)
             client.name = normalize_name(entry.original_name)
+            stored_state = getattr(state.state, "state", None)
+            client.online = stored_state == STATE_HOME
+            client.restored_state_available = stored_state not in (
+                STATE_UNAVAILABLE,
+                STATE_UNKNOWN,
+                None,
+            )
             client_data[entry.unique_id] = client
 
     return await async_create_and_refresh_coordinators(
@@ -191,6 +230,42 @@ async def async_create_config_data(hass: HomeAssistant, config_entry: ConfigEntr
     )
 
 
+async def async_pause_polling(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+    """Pause Deco polling."""
+    coordinator_decos = hass.data[DOMAIN][config_entry.entry_id][COORDINATOR_DECOS_KEY]
+
+    if coordinator_decos.paused:
+        _LOGGER.info("TP-Link Deco polling is already paused")
+        return
+
+    coordinator_decos.paused = True
+    _LOGGER.info("TP-Link Deco polling paused")
+
+
+async def async_resume_polling(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+    """Resume Deco polling."""
+    coordinator_decos = hass.data[DOMAIN][config_entry.entry_id][COORDINATOR_DECOS_KEY]
+
+    if not coordinator_decos.paused:
+        _LOGGER.info("TP-Link Deco polling is already running")
+        return
+
+    coordinator_decos.paused = False
+    _LOGGER.info("TP-Link Deco polling resumed")
+    await coordinator_decos.async_request_refresh()
+    coordinator_wireless = hass.data[DOMAIN][config_entry.entry_id].get(
+        COORDINATOR_WIRELESS_KEY
+    )
+    if coordinator_wireless is not None:
+        coordinator_wireless.reset_retry()
+        await coordinator_wireless.async_request_refresh()
+    mobile_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(
+        COORDINATOR_MOBILE_KEY
+    )
+    if mobile_coordinator is not None:
+        await mobile_coordinator.async_request_refresh()
+
+
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     """Set up this integration using UI."""
     _LOGGER.debug("async_setup_entry: Config entry %s", config_entry.entry_id)
@@ -201,6 +276,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     data = await async_create_config_data(hass, config_entry)
     hass.data[DOMAIN][config_entry.entry_id] = data
     clients_coordinator = data[COORDINATOR_CLIENTS_KEY]
+    mobile_coordinator = data[COORDINATOR_MOBILE_KEY]
+    wireless_coordinator = data[COORDINATOR_WIRELESS_KEY]
 
     # Must be awaited (not wrapped in a task): otherwise unload can race
     # platform setup, and modern Home Assistant requires setup to be complete
@@ -209,8 +286,18 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
     config_entry.async_create_background_task(
         hass,
-        clients_coordinator.async_request_refresh(),
+        clients_coordinator.async_refresh(),
         name="tplink_deco initial client refresh",
+    )
+    config_entry.async_create_background_task(
+        hass,
+        wireless_coordinator.async_refresh(),
+        name="tplink_deco initial wireless refresh",
+    )
+    config_entry.async_create_background_task(
+        hass,
+        mobile_coordinator.async_refresh(),
+        name="tplink_deco initial mobile data refresh",
     )
 
     _async_register_services(hass)
@@ -241,14 +328,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 raise HomeAssistantError(
                     f"Device ID {device_id} is not a TP-Link Deco device"
                 )
-            mac = next(
-                (
-                    identifier[1]
-                    for identifier in device.identifiers
-                    if identifier[0] == DOMAIN
-                ),
-                None,
-            )
+            mac = deco_mac_from_identifiers(device.identifiers)
             if mac is None:
                 raise HomeAssistantError(
                     f"Device ID {device_id} does not have a {DOMAIN} MAC identifier"
@@ -317,6 +397,8 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     if unloaded:
         deco_coordinator = data.get(COORDINATOR_DECOS_KEY)
         clients_coordinator = data.get(COORDINATOR_CLIENTS_KEY)
+        wireless_coordinator = data.get(COORDINATOR_WIRELESS_KEY)
+        mobile_coordinator = data.get(COORDINATOR_MOBILE_KEY)
 
         # Shut the coordinators down before logging out: async_close only
         # detaches listeners, it does not cancel a scheduled/in-flight
@@ -326,6 +408,10 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
             await deco_coordinator.async_shutdown()
         if clients_coordinator is not None:
             await clients_coordinator.async_shutdown()
+        if wireless_coordinator is not None:
+            await wireless_coordinator.async_shutdown()
+        if mobile_coordinator is not None:
+            await mobile_coordinator.async_shutdown()
 
         if deco_coordinator is not None:
             await deco_coordinator.async_close()

@@ -7,10 +7,12 @@ import pytest
 
 from custom_components.tplink_deco.const import COORDINATOR_CLIENTS_KEY
 from custom_components.tplink_deco.const import COORDINATOR_DECOS_KEY
+from custom_components.tplink_deco.const import COORDINATOR_MOBILE_KEY
 from custom_components.tplink_deco.const import DOMAIN
 from custom_components.tplink_deco.coordinator import TpLinkDeco
 from custom_components.tplink_deco.coordinator import TpLinkDecoClient
 from custom_components.tplink_deco.coordinator import TpLinkDecoData
+from custom_components.tplink_deco.sensor import TplinkCoordinatorHealthSensor
 from custom_components.tplink_deco.sensor import TplinkDecoDiagnosticSensor
 from custom_components.tplink_deco.sensor import TplinkTotalClientDataRateSensor
 from custom_components.tplink_deco.sensor import async_setup_entry
@@ -39,6 +41,8 @@ async def test_diagnostic_sensors_are_added_when_values_arrive_later():
     coordinator_clients = MagicMock()
     coordinator_clients.data = {}
     coordinator_clients.has_successful_refresh = False
+    coordinator_mobile = MagicMock()
+    coordinator_mobile.data = None
 
     entry_id = "test_entry"
     hass = SimpleNamespace(
@@ -47,6 +51,7 @@ async def test_diagnostic_sensors_are_added_when_values_arrive_later():
                 entry_id: {
                     COORDINATOR_DECOS_KEY: coordinator_decos,
                     COORDINATOR_CLIENTS_KEY: coordinator_clients,
+                    COORDINATOR_MOBILE_KEY: coordinator_mobile,
                 }
             }
         }
@@ -56,7 +61,11 @@ async def test_diagnostic_sensors_are_added_when_values_arrive_later():
     def add_entities(entities):
         added_entities.extend(entities)
 
-    await async_setup_entry(hass, SimpleNamespace(entry_id=entry_id), add_entities)
+    await async_setup_entry(
+        hass,
+        SimpleNamespace(entry_id=entry_id, async_on_unload=lambda _callback: None),
+        add_entities,
+    )
 
     def diagnostic_entities():
         return [
@@ -96,6 +105,92 @@ async def test_diagnostic_sensors_are_added_when_values_arrive_later():
     assert keys.count("signal_strength_2_4ghz") == 1
     assert keys.count("signal_strength_5ghz") == 1
     assert keys.count("wired_port_speed_min") == 1
+
+
+@pytest.mark.asyncio
+async def test_runtime_deco_addition_keeps_health_sensors_published():
+    master_mac = "AA:BB:CC:DD:EE:01"
+    runtime_mac = "AA:BB:CC:DD:EE:02"
+    master = TpLinkDeco(master_mac)
+    master.update(
+        {
+            "mac": master_mac,
+            "nickname": "Router",
+            "role": "master",
+            "group_status": "connected",
+            "device_ip": "192.0.2.1",
+        }
+    )
+    runtime_deco = TpLinkDeco(runtime_mac)
+    runtime_deco.update(
+        {
+            "mac": runtime_mac,
+            "nickname": "Office",
+            "role": "satellite",
+            "group_status": "connected",
+            "device_ip": "192.0.2.2",
+        }
+    )
+
+    coordinator_decos = MagicMock()
+    coordinator_decos.data = TpLinkDecoData(
+        master_deco=master,
+        decos={master_mac: master},
+    )
+    deco_listeners = []
+    coordinator_decos.async_add_listener.side_effect = (
+        lambda listener: deco_listeners.append(listener) or (lambda: None)
+    )
+
+    coordinator_clients = MagicMock()
+    coordinator_clients.data = {}
+    coordinator_clients.has_successful_refresh = False
+    coordinator_clients.async_add_listener.return_value = lambda: None
+
+    coordinator_mobile = MagicMock()
+    coordinator_mobile.data = None
+    coordinator_mobile.async_add_listener.return_value = lambda: None
+
+    entry_id = "test_entry"
+    hass = SimpleNamespace(
+        data={
+            DOMAIN: {
+                entry_id: {
+                    COORDINATOR_DECOS_KEY: coordinator_decos,
+                    COORDINATOR_CLIENTS_KEY: coordinator_clients,
+                    COORDINATOR_MOBILE_KEY: coordinator_mobile,
+                }
+            }
+        }
+    )
+    added_entities = []
+
+    def add_entities(entities):
+        added_entities.extend(entities)
+
+    await async_setup_entry(
+        hass,
+        SimpleNamespace(entry_id=entry_id, async_on_unload=lambda _callback: None),
+        add_entities,
+    )
+
+    health_entities = [
+        entity
+        for entity in added_entities
+        if isinstance(entity, TplinkCoordinatorHealthSensor)
+    ]
+    assert health_entities
+    assert all(entity.available for entity in health_entities)
+
+    coordinator_decos.data.decos[runtime_mac] = runtime_deco
+    deco_listeners[0]()
+
+    assert any(
+        isinstance(entity, TplinkDecoDiagnosticSensor)
+        and entity.unique_id == f"{runtime_mac}_ip_address"
+        for entity in added_entities
+    )
+    assert all(entity.available for entity in health_entities)
 
 
 def _client(

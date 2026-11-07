@@ -12,6 +12,8 @@ from custom_components.tplink_deco import async_create_config_data
 from custom_components.tplink_deco.const import ATTR_DEVICE_TYPE
 from custom_components.tplink_deco.const import DEVICE_TYPE_CLIENT
 from custom_components.tplink_deco.const import DEVICE_TYPE_DECO
+from custom_components.tplink_deco.coordinator import TpLinkDecoData
+from custom_components.tplink_deco.device_tracker import TplinkDecoClientDeviceTracker
 
 
 def _entry(
@@ -29,9 +31,9 @@ def _entry(
     )
 
 
-def _stored_state(device_type=DEVICE_TYPE_CLIENT):
+def _stored_state(device_type=DEVICE_TYPE_CLIENT, presence="home"):
     attributes = {} if device_type is None else {ATTR_DEVICE_TYPE: device_type}
-    return SimpleNamespace(state=SimpleNamespace(attributes=attributes))
+    return SimpleNamespace(state=SimpleNamespace(state=presence, attributes=attributes))
 
 
 def _capture_coordinator_data(coordinator_data):
@@ -63,7 +65,7 @@ def test_discovered_decos_are_removed_from_provisional_clients():
 
 
 @pytest.mark.asyncio
-async def test_restore_seeds_unavailable_tracker_without_device_type():
+async def test_restore_seeds_tracker_without_device_type():
     entry = _entry("AA:BB:CC:DD:EE:01")
     coordinator_data = {}
 
@@ -93,6 +95,61 @@ async def test_restore_seeds_unavailable_tracker_without_device_type():
 
     assert list(coordinator_data["client_data"]) == [entry.unique_id]
     assert coordinator_data["client_data"][entry.unique_id].name == entry.original_name
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "presence,expected_connected",
+    [("home", True), ("not_home", False)],
+)
+async def test_restored_tracker_keeps_presence_until_first_client_refresh(
+    presence, expected_connected
+):
+    entry = _entry("AA:BB:CC:DD:EE:06")
+    coordinator_data = {}
+    restore_data = SimpleNamespace(
+        async_get_stored_state=lambda entity_id: _stored_state(
+            DEVICE_TYPE_CLIENT, presence
+        )
+    )
+
+    with (
+        patch(
+            "custom_components.tplink_deco.entity_registry.async_entries_for_config_entry",
+            return_value=[entry],
+        ),
+        patch("custom_components.tplink_deco.entity_registry.async_get"),
+        patch(
+            "custom_components.tplink_deco.restore_state.async_get",
+            return_value=restore_data,
+        ),
+        patch(
+            "custom_components.tplink_deco.async_create_and_refresh_coordinators",
+            new=AsyncMock(side_effect=_capture_coordinator_data(coordinator_data)),
+        ),
+    ):
+        config_entry = MagicMock()
+        config_entry.entry_id = "entry"
+        config_entry.data = {}
+        await async_create_config_data(MagicMock(), config_entry)
+
+    client = coordinator_data["client_data"][entry.unique_id]
+    coordinator_clients = MagicMock(
+        data={entry.unique_id: client},
+        has_successful_refresh=False,
+        last_update_success=False,
+    )
+    tracker = TplinkDecoClientDeviceTracker(
+        MagicMock(data=TpLinkDecoData()),
+        coordinator_clients,
+        client,
+        "",
+        "",
+        True,
+    )
+
+    assert tracker.is_connected is expected_connected
+    assert tracker.available is True
 
 
 @pytest.mark.asyncio
