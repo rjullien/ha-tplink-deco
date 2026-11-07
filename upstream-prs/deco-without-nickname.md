@@ -1,46 +1,49 @@
 # Deco device payload without a nickname
 
+Title: Handle a Deco without nickname in device_list
+
 ## Summary
 
-`TpLinkDeco.update()` raises an `AttributeError` when a `device_list` payload has
-neither `custom_nickname` nor `nickname`: `snake_case_to_title_space(None)`
-attempts to call `.split()` on `None`. This is a defensive fix for payloads
-without `nickname`, as reported in the older #521. It has not been observed on
-our hardware: all four of our Decos report a nickname.
+`TpLinkDeco.update()` raises `AttributeError: 'NoneType' object has no attribute 'split'` when a `device_list` entry has neither `custom_nickname` nor
+`nickname`: `snake_case_to_title_space(None)` calls `.split()` on `None`. The
+same bug was listed in #521 (closed unmerged), so it is still present on
+`main`. It has not been observed on our hardware (all our Decos report a
+nickname): this is a defensive fix.
 
 ## Change
 
-Only derive the default Deco name when `nickname` is present. If both nickname
-fields are absent, `name` stays `None`. `device_tracker.py` already handles
-that with `if self._deco.name is not None`. The device-registry name expression
-in `device.py` (`f"{deco.name} Deco"`) is unchanged and out of scope.
+- An empty `custom_nickname` is treated like a missing one and falls back to
+  `nickname`.
+- Without either, the Deco is named after its MAC address instead of staying
+  `None`. Leaving `None` would only move the problem: `device.py` builds the
+  registry name as `f"{deco.name} Deco"` ("None Deco") and `sensor.py` uses
+  `deco.name` as the sensor name prefix.
 
 ## Tests
 
-Against upstream `main` before the fix, the new tests reproduce the bug:
+`tests/test_deco_nickname.py`: no nickname → MAC name; `nickname` is formatted
+(`living_room` → `Living Room`); `custom_nickname` wins over `nickname`; an
+empty `custom_nickname` falls back to `nickname`, then to the MAC; the device
+registry name is `<MAC> Deco` without a nickname.
+
+Against upstream `main` before the fix:
 
 ```text
-1 failed, 2 passed
+4 failed, 2 passed, 1 warning in 1.92s
 ```
 
-With the fix:
+With the fix, full suite:
 
 ```text
-3 passed
-```
-
-Full upstream suite:
-
-```text
-77 tests collected; 77 passed, 7 warnings (exit code 0)
+80 passed, 1 warning in 2.38s
 ```
 
 ## Diff stat
 
-`git diff --stat upstream/main...upstream/deco-without-nickname`:
+`git diff --stat upstream/main...fix/deco-without-nickname`:
 
 ```text
- custom_components/tplink_deco/coordinator.py |  4 +++-
- tests/test_deco_nickname.py                  | 29 ++++++++++++++++++++++++++++
- 2 files changed, 32 insertions(+), 1 deletion(-)
+ custom_components/tplink_deco/coordinator.py | 13 ++++---
+ tests/test_deco_nickname.py                  | 55 ++++++++++++++++++++++++++++
+ 2 files changed, 63 insertions(+), 5 deletions(-)
 ```
