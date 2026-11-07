@@ -24,7 +24,9 @@ The endpoint and payload match the Deco client in `tplinkrouterc6u` 5.38.0
 (`client/deco.py`): `admin/system?form=logout` with
 `{"operation": "logout"}`. The equivalent call has shipped in the fork since
 v3.9.1.0, the first release tag containing `async_logout`. Fork history shows
-two introduction commits, `35f03f9` and `5c45857` (both 2026-05-29). The
+two introduction commits, `35f03f9` and `5c45857` (both 2026-05-29), and
+`6db2b55` (2026-06-11), which shuts the coordinators down before logging out —
+the order this change follows. The
 v3.9.1.0 README changelog records request serialization and the session-churn
 fix; v3.10.5.0 later names `async_logout` explicitly.
 
