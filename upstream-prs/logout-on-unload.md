@@ -15,11 +15,18 @@ logout under `_operation_lock`, then clears local authentication state even if
 the request fails. A logout failure does not block unload; a failed platform
 unload keeps the session.
 
+Home Assistant does not unload config entries when it stops, so a HA stop or
+restart still leaves the session to the Deco's own timeout: this change covers
+reload and removal of the entry. Logout failures are logged at debug level, as
+the call is best-effort.
+
 The endpoint and payload match the Deco client in `tplinkrouterc6u` 5.38.0
 (`client/deco.py`): `admin/system?form=logout` with
 `{"operation": "logout"}`. The equivalent call has shipped in the fork since
 v3.9.1.0, the first release tag containing `async_logout`. Fork history shows
-two introduction commits, `35f03f9` and `5c45857` (both 2026-05-29). The
+two introduction commits, `35f03f9` and `5c45857` (both 2026-05-29), and
+`6db2b55` (2026-06-11), which shuts the coordinators down before logging out —
+the order this change follows. The
 v3.9.1.0 README changelog records request serialization and the session-churn
 fix; v3.10.5.0 later names `async_logout` explicitly.
 
@@ -53,7 +60,7 @@ Tests: `test_async_logout_posts_logout_and_clears_auth`,
 
 ## Diff stat
 
-`git diff --stat upstream/main...upstream/logout-on-unload`:
+`git diff --stat upstream/main...fix/logout-on-unload`:
 
 ```text
  custom_components/tplink_deco/__init__.py |   6 ++
