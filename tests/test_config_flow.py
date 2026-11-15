@@ -104,6 +104,34 @@ async def _step(flow, kind, data=None):
     return await flow.async_step_init(data)
 
 
+@pytest.mark.asyncio
+async def test_reauth_preserves_syslog_and_client_name_settings():
+    flow, entry = _flow("user")
+    entry.data.update(
+        {
+            CONF_SYSLOG_ENABLED: True,
+            CONF_SYSLOG_HOST: "10.0.0.5",
+            CONF_CLIENT_PREFIX: "x",
+        }
+    )
+    flow.reauth_entry = entry
+    flow.hass.config_entries.async_reload = AsyncMock()
+    flow.async_abort = MagicMock(return_value={"type": "abort"})
+
+    with patch.object(
+        config_flow, "_async_test_credentials", AsyncMock(return_value={})
+    ):
+        result = await flow.async_step_reauth_confirm(
+            {CONF_USERNAME: "admin", CONF_PASSWORD: "new-password"}
+        )
+
+    saved = flow.hass.config_entries.async_update_entry.call_args.kwargs["data"]
+    assert result == {"type": "abort"}
+    assert saved[CONF_SYSLOG_ENABLED] is True
+    assert saved[CONF_SYSLOG_HOST] == "10.0.0.5"
+    assert saved[CONF_CLIENT_PREFIX] == "x"
+
+
 def _serialize(schema):
     # Exercise HA's actual HTTP conversion, including its version-specific serializer.
     view = _BaseFlowManagerView(MagicMock())
