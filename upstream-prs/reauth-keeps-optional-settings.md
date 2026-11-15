@@ -41,6 +41,7 @@ Against upstream `main` before the fix:
 
 ```text
 FAILED tests/test_config_flow.py::test_reauth_keeps_name_and_syslog_settings
+1 failed, 52 passed, 1 warning in 3.56s
 ```
 
 With the fix, full suite:
