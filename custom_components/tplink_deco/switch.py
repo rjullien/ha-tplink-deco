@@ -23,9 +23,10 @@ def _migrate_polling_switch_unique_id(
 ) -> None:
     """Migrate legacy polling switch IDs without changing their entity IDs."""
     registry = er.async_get(hass)
+    target_unique_id = polling_unique_id(config_entry.entry_id)
     legacy_unique_ids = (
-        LEGACY_POLLING_UNIQUE_ID,
         f"{config_entry.entry_id}_polling",
+        LEGACY_POLLING_UNIQUE_ID,
     )
     for unique_id in legacy_unique_ids:
         entity_id = registry.async_get_entity_id(SWITCH_DOMAIN, DOMAIN, unique_id)
@@ -36,9 +37,15 @@ def _migrate_polling_switch_unique_id(
         if entry is None or entry.config_entry_id != config_entry.entry_id:
             continue
 
+        if (
+            registry.async_get_entity_id(SWITCH_DOMAIN, DOMAIN, target_unique_id)
+            is not None
+        ):
+            continue
+
         registry.async_update_entity(
             entity_id,
-            new_unique_id=polling_unique_id(config_entry.entry_id),
+            new_unique_id=target_unique_id,
         )
 
 

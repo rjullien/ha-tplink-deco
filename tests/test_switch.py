@@ -5,8 +5,13 @@ from unittest.mock import call
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import pytest
+
+from custom_components.tplink_deco.const import COORDINATOR_DECOS_KEY
+from custom_components.tplink_deco.const import DOMAIN
 from custom_components.tplink_deco.switch import DecoPollingSwitch
 from custom_components.tplink_deco.switch import LEGACY_POLLING_UNIQUE_ID
+from custom_components.tplink_deco.switch import async_setup_entry
 from custom_components.tplink_deco.switch import _migrate_polling_switch_unique_id
 from custom_components.tplink_deco.switch import polling_unique_id
 
@@ -26,7 +31,7 @@ def test_polling_switch_unique_id_is_scoped_to_config_entry():
 
 def test_migrate_legacy_polling_switch_preserves_entity_id():
     registry = MagicMock()
-    registry.async_get_entity_id.side_effect = ["switch.polling", None]
+    registry.async_get_entity_id.side_effect = [None, "switch.polling", None]
     registry.async_get.return_value = SimpleNamespace(config_entry_id="first")
 
     with patch(
@@ -36,8 +41,9 @@ def test_migrate_legacy_polling_switch_preserves_entity_id():
 
     registry.async_get_entity_id.assert_has_calls(
         [
-            call("switch", "tplink_deco", LEGACY_POLLING_UNIQUE_ID),
             call("switch", "tplink_deco", "first_polling"),
+            call("switch", "tplink_deco", LEGACY_POLLING_UNIQUE_ID),
+            call("switch", "tplink_deco", polling_unique_id("first")),
         ]
     )
     registry.async_update_entity.assert_called_once_with(
@@ -47,7 +53,7 @@ def test_migrate_legacy_polling_switch_preserves_entity_id():
 
 def test_migrate_fork_format_polling_switch_preserves_entity_id():
     registry = MagicMock()
-    registry.async_get_entity_id.side_effect = [None, "switch.polling"]
+    registry.async_get_entity_id.side_effect = ["switch.polling", None, None]
     registry.async_get.return_value = SimpleNamespace(config_entry_id="first")
 
     with patch(
@@ -57,6 +63,46 @@ def test_migrate_fork_format_polling_switch_preserves_entity_id():
 
     registry.async_update_entity.assert_called_once_with(
         "switch.polling", new_unique_id=polling_unique_id("first")
+    )
+
+
+@pytest.mark.asyncio
+async def test_setup_migrates_fork_id_before_duplicate_legacy_id():
+    registry = MagicMock()
+    registry.async_get_entity_id.side_effect = [
+        "switch.fork_polling",
+        None,
+        "switch.upstream_polling",
+        "switch.fork_polling",
+    ]
+    registry.async_get.side_effect = [
+        SimpleNamespace(config_entry_id="first"),
+        SimpleNamespace(config_entry_id="first"),
+    ]
+    coordinator = SimpleNamespace(config_entry=_config_entry("first"))
+    hass = SimpleNamespace(
+        data={DOMAIN: {"first": {COORDINATOR_DECOS_KEY: coordinator}}}
+    )
+    async_add_entities = MagicMock()
+
+    with patch(
+        "custom_components.tplink_deco.switch.er.async_get", return_value=registry
+    ):
+        await async_setup_entry(hass, _config_entry("first"), async_add_entities)
+
+    registry.async_get_entity_id.assert_has_calls(
+        [
+            call("switch", "tplink_deco", "first_polling"),
+            call("switch", "tplink_deco", polling_unique_id("first")),
+            call("switch", "tplink_deco", LEGACY_POLLING_UNIQUE_ID),
+            call("switch", "tplink_deco", polling_unique_id("first")),
+        ]
+    )
+    registry.async_update_entity.assert_called_once_with(
+        "switch.fork_polling", new_unique_id=polling_unique_id("first")
+    )
+    assert async_add_entities.call_args.args[0][0].unique_id == polling_unique_id(
+        "first"
     )
 
 
