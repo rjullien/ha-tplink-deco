@@ -200,6 +200,28 @@ async def test_continuation_at_start_of_poll_follows_header_in_tail(send):
 
 
 @pytest.mark.asyncio
+async def test_long_continuation_prefix_keeps_syslog_header(send, utc):
+    header = "Sat Nov  7 12:19:42 2026 user.err fan[7]: at+qtemp"
+    continuations = [f"+QTEMP:{i}" for i in range(25)]
+    api = _api(header, *continuations)
+    store = FakeStore()
+    forwarder = _forwarder(api, store)
+
+    await forwarder.async_forward_new_lines()
+    assert store.data["tail"] == continuations[-20:]
+
+    new_lines = ["+QTEMP:new-a", "+QTEMP:new-b"]
+    api.async_get_system_log.return_value = _log(header, *continuations, *new_lines)
+    with patch.object(syslog_forwarder.dt_util, "now", return_value=NOW):
+        assert await forwarder.async_forward_new_lines() == len(new_lines)
+
+    assert send.await_args.args[0] == [
+        f"<11>1 2026-11-07T12:19:42+00:00 192.168.0.1 fan 7 - - {line}"
+        for line in new_lines
+    ]
+
+
+@pytest.mark.asyncio
 async def test_stored_tail_resumes_after_restart(send):
     api = _api("a", "b", "c")
     store = FakeStore({"level": SystemLogLevel.ALL, "tail": ["a"]})
