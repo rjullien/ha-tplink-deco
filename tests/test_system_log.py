@@ -16,6 +16,7 @@ import pytest
 from custom_components.tplink_deco import api as api_module
 from custom_components.tplink_deco.api import TplinkDecoApi
 from custom_components.tplink_deco.api import _decode_system_log
+from custom_components.tplink_deco.exceptions import ForbiddenException
 from custom_components.tplink_deco.exceptions import UnexpectedApiException
 from custom_components.tplink_deco.system_log import SystemLogLevel
 
@@ -112,10 +113,16 @@ def _json_response(payload):
     return response
 
 
-def _status_response(status):
+def _status_response(status, stok=None):
+    request_info = MagicMock()
+    request_info.real_url = (
+        f"https://192.168.1.1/cgi-bin/luci/;stok={stok}/admin/log_export"
+        if stok
+        else "https://192.168.1.1/cgi-bin/luci/admin/log_export"
+    )
     response = MagicMock()
     response.raise_for_status.side_effect = aiohttp.ClientResponseError(
-        request_info=MagicMock(), history=(), status=status
+        request_info=request_info, history=(), status=status
     )
     return response
 
@@ -251,6 +258,48 @@ async def test_expired_session_relogs_in_and_rebuilds(api, session, expired):
     assert text == LOG_TEXT
     api.async_login.assert_awaited_once()
     assert router.builds == [("token", 8), ("fresh-token", 8)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "error_type", "attempts"),
+    [
+        (403, ForbiddenException, 2),
+        (500, aiohttp.ClientResponseError, 1),
+    ],
+)
+async def test_save_log_http_errors_do_not_leak_stok(
+    api, session, caplog, status, error_type, attempts
+):
+    stok = "secret-system-log-stok"
+    _authenticate(api, stok)
+    api.async_login_if_needed = AsyncMock()
+    api._async_post = AsyncMock(return_value={"data": {"error_code": 0}})
+    responses = [_status_response(status, stok) for _ in range(attempts)]
+    session.post.side_effect = responses
+    caplog.set_level("DEBUG", logger="custom_components.tplink_deco.api")
+
+    raw_error = responses[0].raise_for_status.side_effect
+    assert stok in str(raw_error)
+
+    with pytest.raises(error_type) as err:
+        await api.async_get_system_log()
+
+    assert stok in session.post.await_args_list[0].args[0]
+    assert stok not in str(err.value)
+    assert stok not in caplog.text
+    assert session.post.await_count == attempts
+    if status == 500:
+        assert err.value.message == "Get System Log HTTP status=500"
+        assert api._stok is None
+        assert api._cookie is None
+        assert "server error 500, clearing auth for retry" in caplog.text
+    else:
+        assert str(err.value) == "Get System Log forbidden: status=403"
+        assert (
+            "Re-login and retry potential expired auth error: "
+            "Get System Log forbidden: status=403"
+        ) in caplog.text
 
 
 @pytest.mark.asyncio

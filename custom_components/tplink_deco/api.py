@@ -9,6 +9,7 @@ from pathlib import PurePosixPath
 import re
 import secrets
 import tarfile
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import quote_plus
 import zlib
@@ -470,9 +471,21 @@ class TplinkDecoApi:
             if err.status in (401, 403):
                 self.clear_auth()
                 raise ForbiddenException(
-                    f"{SYSTEM_LOG_CONTEXT} forbidden: {err}"
-                ) from err
-            raise err
+                    f"{SYSTEM_LOG_CONTEXT} forbidden: status={err.status}"
+                ) from None
+            if err.status >= 500:
+                self.clear_auth()
+                _LOGGER.warning(
+                    "%s server error %s, clearing auth for retry",
+                    SYSTEM_LOG_CONTEXT,
+                    err.status,
+                )
+            raise aiohttp.ClientResponseError(
+                request_info=SimpleNamespace(real_url=""),
+                history=(),
+                status=err.status,
+                message=f"{SYSTEM_LOG_CONTEXT} HTTP status={err.status}",
+            ) from None
         except (aiohttp.ClientPayloadError, aiohttp.ServerDisconnectedError) as err:
             raise TransientConnectionException(
                 f"{SYSTEM_LOG_CONTEXT} transient connection error: {err}"
