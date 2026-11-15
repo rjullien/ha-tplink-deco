@@ -1,12 +1,45 @@
+from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import COORDINATOR_DECOS_KEY
 from .const import DOMAIN
 from .device import create_device_info
+
+LEGACY_POLLING_UNIQUE_ID = "tplink_deco_polling"
+
+
+def polling_unique_id(config_entry_id: str) -> str:
+    """Return the config-entry-scoped polling switch unique ID."""
+    return f"{LEGACY_POLLING_UNIQUE_ID}_{config_entry_id}"
+
+
+def _migrate_polling_switch_unique_id(
+    hass: HomeAssistant, config_entry: ConfigEntry
+) -> None:
+    """Migrate legacy polling switch IDs without changing their entity IDs."""
+    registry = er.async_get(hass)
+    legacy_unique_ids = (
+        LEGACY_POLLING_UNIQUE_ID,
+        f"{config_entry.entry_id}_polling",
+    )
+    for unique_id in legacy_unique_ids:
+        entity_id = registry.async_get_entity_id(SWITCH_DOMAIN, DOMAIN, unique_id)
+        if entity_id is None:
+            continue
+
+        entry = registry.async_get(entity_id)
+        if entry is None or entry.config_entry_id != config_entry.entry_id:
+            continue
+
+        registry.async_update_entity(
+            entity_id,
+            new_unique_id=polling_unique_id(config_entry.entry_id),
+        )
 
 
 async def async_setup_entry(
@@ -17,18 +50,17 @@ async def async_setup_entry(
     """Set up switch."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id][COORDINATOR_DECOS_KEY]
 
-    async_add_entities([DecoPollingSwitch(config_entry, coordinator)])
+    _migrate_polling_switch_unique_id(hass, config_entry)
+    async_add_entities([DecoPollingSwitch(coordinator)])
 
 
 class DecoPollingSwitch(SwitchEntity):
     """Switch to control Deco polling."""
 
-    def __init__(self, config_entry: ConfigEntry, coordinator) -> None:
+    def __init__(self, coordinator) -> None:
         self.coordinator = coordinator
         self._attr_name = "Polling"
-        # Scoped to the config entry: a global unique_id would collide when
-        # several Deco networks are configured.
-        self._attr_unique_id = f"{config_entry.entry_id}_polling"
+        self._attr_unique_id = polling_unique_id(coordinator.config_entry.entry_id)
         self._attr_icon = "mdi:lan-connect"
 
     @property

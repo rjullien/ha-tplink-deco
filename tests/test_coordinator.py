@@ -195,9 +195,9 @@ class TestTpLinkDecoModel:
             "product_level": 2,
             "future_field": "future-value",
             "scalar_list": ["one", 2, True],
-            "default_ssid": "Deco",
             "master": False,
         }
+        assert "default_ssid" not in deco.extra
         assert "wired_port_list" not in deco.extra
         assert "signal_strength" not in deco.extra
         assert "nested_field" not in deco.extra

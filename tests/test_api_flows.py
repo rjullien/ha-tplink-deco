@@ -178,7 +178,10 @@ async def test_decrypted_api_responses_log_raw_payloads(
     ]
     assert len(raw_logs) == 1
     assert mock_session.post.await_count == 1
-    assert json.dumps(response_data, ensure_ascii=False) in raw_logs[0]
+    assert (
+        json.dumps(_redact_raw_response(response_data), ensure_ascii=False)
+        in raw_logs[0]
+    )
     if method_name == "async_list_clients":
         mac = response_data["result"]["client_list"][0]["mac"]
         assert mac in raw_logs[0]
@@ -235,6 +238,9 @@ async def test_async_reboot_logs_redacted_raw_response(api, mock_session, caplog
 def test_redact_raw_response_recursively_preserves_identifiers():
     data = {
         "mac": "AA:BB:CC:DD:EE:01",
+        "default_ssid": "private-network-name",
+        "SSID": "another-private-name",
+        "PSK": "wifi-secret",
         "nested": [
             {
                 "StOk": "session-secret",
@@ -248,6 +254,9 @@ def test_redact_raw_response_recursively_preserves_identifiers():
 
     assert redacted == {
         "mac": "AA:BB:CC:DD:EE:01",
+        "default_ssid": "**REDACTED**",
+        "SSID": "**REDACTED**",
+        "PSK": "**REDACTED**",
         "nested": [
             {
                 "StOk": "**REDACTED**",
@@ -260,6 +269,7 @@ def test_redact_raw_response_recursively_preserves_identifiers():
         ],
     }
     assert data["nested"][0]["StOk"] == "session-secret"
+    assert data["default_ssid"] == "private-network-name"
 
 
 @pytest.mark.asyncio

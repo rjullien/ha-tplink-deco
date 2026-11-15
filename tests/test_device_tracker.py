@@ -87,7 +87,7 @@ def test_deco_extra_attributes_do_not_override_named_attributes():
 
 
 def test_secret_api_fields_are_not_exposed_on_tracker_attributes():
-    secret_keys = {"stok", "password", "token", "cookie"}
+    secret_keys = {"stok", "password", "token", "cookie", "ssid", "default_ssid", "psk"}
     deco = _make_master_deco()
     deco.update(
         {
@@ -99,6 +99,7 @@ def test_secret_api_fields_are_not_exposed_on_tracker_attributes():
             "Stok": "secret-stok",
             "password": "secret-password",
             "cookie": "secret-cookie",
+            "default_ssid": "private-network-name",
             "future_field": "safe-deco-value",
         }
     )
