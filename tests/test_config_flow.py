@@ -104,6 +104,34 @@ async def _step(flow, kind, data=None):
     return await flow.async_step_init(data)
 
 
+@pytest.mark.asyncio
+async def test_reauth_preserves_syslog_and_client_name_settings():
+    flow, entry = _flow("user")
+    entry.data.update(
+        {
+            CONF_SYSLOG_ENABLED: True,
+            CONF_SYSLOG_HOST: "10.0.0.5",
+            CONF_CLIENT_PREFIX: "x",
+        }
+    )
+    flow.reauth_entry = entry
+    flow.hass.config_entries.async_reload = AsyncMock()
+    flow.async_abort = MagicMock(return_value={"type": "abort"})
+
+    with patch.object(
+        config_flow, "_async_test_credentials", AsyncMock(return_value={})
+    ):
+        result = await flow.async_step_reauth_confirm(
+            {CONF_USERNAME: "admin", CONF_PASSWORD: "new-password"}
+        )
+
+    saved = flow.hass.config_entries.async_update_entry.call_args.kwargs["data"]
+    assert result == {"type": "abort"}
+    assert saved[CONF_SYSLOG_ENABLED] is True
+    assert saved[CONF_SYSLOG_HOST] == "10.0.0.5"
+    assert saved[CONF_CLIENT_PREFIX] == "x"
+
+
 def _serialize(schema):
     # Exercise HA's actual HTTP conversion, including its version-specific serializer.
     view = _BaseFlowManagerView(MagicMock())
@@ -211,6 +239,30 @@ async def test_correcting_invalid_interval_finishes_flow(kind):
 
     assert invalid["type"] == "form"
     assert valid["type"] == "create_entry"
+
+
+@pytest.mark.asyncio
+async def test_options_retests_changed_credentials_after_invalid_interval():
+    flow, _entry = _flow("options")
+    invalid = _data(5) | {CONF_PASSWORD: "new-password"}
+    valid = _data(30) | {CONF_PASSWORD: "new-password"}
+
+    with patch.object(
+        config_flow,
+        "_async_test_credentials",
+        AsyncMock(return_value={"base": "cannot_connect"}),
+    ) as check:
+        first_result = await flow.async_step_init(invalid)
+        check.assert_not_awaited()
+        second_result = await flow.async_step_init(valid)
+
+    assert first_result["errors"] == {
+        CONF_DEVICE_LIST_INTERVAL: "invalid_device_list_interval"
+    }
+    assert second_result["type"] == "form"
+    assert second_result["errors"] == {"base": "cannot_connect"}
+    check.assert_awaited_once()
+    flow.hass.config_entries.async_update_entry.assert_not_called()
 
 
 @pytest.mark.asyncio

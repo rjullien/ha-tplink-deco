@@ -138,6 +138,14 @@ startup-only mode can mitigate this firmware behavior.
 >
 > **HACS depuis v3.14.x :** `3.10.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
 
+### v3.15.2.1
+
+Fork fixes to the upstream v3.15.2 code:
+
+- Preserve optional syslog and client-name settings during reauthentication.
+- Re-test changed credentials after an options validation error is corrected.
+- Retain Deco header metadata on syslog continuation lines after long log segments.
+
 ### v3.15.2.0
 
 - Align with upstream v3.15.2: nickname fallback to the Deco MAC (#651); orderly coordinator shutdown and logout (#656); downloadable system logs, including compressed logs (#650, #673); optional syslog forwarding, disabled by default (#666); polling-switch unique-ID migration (#655); and config-flow fixes (#658, #669, #670).

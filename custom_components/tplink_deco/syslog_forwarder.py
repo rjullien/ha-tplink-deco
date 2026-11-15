@@ -350,7 +350,7 @@ class TplinkDecoSyslogForwarder:
                     new,
                     self._hostname,
                     dt_util.now(),
-                    previous=logged_before[-TAIL_LINES:],
+                    previous=logged_before,
                 )
             )
         await self._async_save_tail(fetched)
