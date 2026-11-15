@@ -1,8 +1,8 @@
 """Tests for the Deco polling switch."""
 
 from types import SimpleNamespace
-from unittest.mock import call
 from unittest.mock import MagicMock
+from unittest.mock import call
 from unittest.mock import patch
 
 import pytest
@@ -11,8 +11,8 @@ from custom_components.tplink_deco.const import COORDINATOR_DECOS_KEY
 from custom_components.tplink_deco.const import DOMAIN
 from custom_components.tplink_deco.switch import DecoPollingSwitch
 from custom_components.tplink_deco.switch import LEGACY_POLLING_UNIQUE_ID
-from custom_components.tplink_deco.switch import async_setup_entry
 from custom_components.tplink_deco.switch import _migrate_polling_switch_unique_id
+from custom_components.tplink_deco.switch import async_setup_entry
 from custom_components.tplink_deco.switch import polling_unique_id
 
 
