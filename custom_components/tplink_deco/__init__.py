@@ -5,6 +5,7 @@ For more details about this integration, please refer to
 https://github.com/amosyuen/ha-tplink-deco
 """
 
+import asyncio
 from datetime import timedelta
 import logging
 from typing import Any
@@ -64,15 +65,27 @@ from .const import PLATFORMS
 from .const import SERVICE_PAUSE_POLLING
 from .const import SERVICE_REBOOT_DECO
 from .const import SERVICE_RESUME_POLLING
+from .const import SYSLOG_FORWARDER_KEY
 from .coordinator import TpLinkDeco
 from .coordinator import TpLinkDecoClient
 from .coordinator import TpLinkDecoData
 from .coordinator import TplinkDecoClientUpdateCoordinator
 from .coordinator import TplinkDecoUpdateCoordinator
 from .mobile import TplinkDecoMobileDataUpdateCoordinator
+from .services import async_setup_services
+from .syslog_forwarder import async_remove_syslog_store
+from .syslog_forwarder import async_setup_syslog_forwarder
 from .wireless import TplinkDecoWirelessUpdateCoordinator
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Register actions once, shared by all config entries."""
+    async_setup_services(hass)
+    return True
 
 
 def _remove_discovered_decos_from_clients(
@@ -275,6 +288,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
     data = await async_create_config_data(hass, config_entry)
     hass.data[DOMAIN][config_entry.entry_id] = data
+    deco_coordinator = data[COORDINATOR_DECOS_KEY]
     clients_coordinator = data[COORDINATOR_CLIENTS_KEY]
     mobile_coordinator = data[COORDINATOR_MOBILE_KEY]
     wireless_coordinator = data[COORDINATOR_WIRELESS_KEY]
@@ -299,6 +313,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         mobile_coordinator.async_refresh(),
         name="tplink_deco initial mobile data refresh",
     )
+
+    syslog_forwarder = await async_setup_syslog_forwarder(
+        hass, config_entry, deco_coordinator
+    )
+    if syslog_forwarder is not None:
+        data[SYSLOG_FORWARDER_KEY] = syslog_forwarder
 
     _async_register_services(hass)
 
@@ -390,52 +410,61 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
         )
         return True
 
-    # Unload the platforms first so no entity can trigger a refresh (and a
-    # re-login) while/after we log out of the Deco.
-    unloaded = await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
+    deco_coordinator = data.get(COORDINATOR_DECOS_KEY)
+    clients_coordinator = data.get(COORDINATOR_CLIENTS_KEY)
+    mobile_coordinator = data.get(COORDINATOR_MOBILE_KEY)
+    wireless_coordinator = data.get(COORDINATOR_WIRELESS_KEY)
 
-    if unloaded:
-        deco_coordinator = data.get(COORDINATOR_DECOS_KEY)
-        clients_coordinator = data.get(COORDINATOR_CLIENTS_KEY)
-        wireless_coordinator = data.get(COORDINATOR_WIRELESS_KEY)
-        mobile_coordinator = data.get(COORDINATOR_MOBILE_KEY)
+    unloaded = all(
+        await asyncio.gather(
+            *[
+                hass.config_entries.async_forward_entry_unload(config_entry, platform)
+                for platform in PLATFORMS
+            ]
+        )
+    )
 
-        # Shut the coordinators down before logging out: async_close only
-        # detaches listeners, it does not cancel a scheduled/in-flight
-        # refresh. Without this, a poll racing the logout could re-login
-        # right after it and leak an admin session that is never released.
-        if deco_coordinator is not None:
-            await deco_coordinator.async_shutdown()
-        if clients_coordinator is not None:
-            await clients_coordinator.async_shutdown()
-        if wireless_coordinator is not None:
-            await wireless_coordinator.async_shutdown()
-        if mobile_coordinator is not None:
-            await mobile_coordinator.async_shutdown()
+    if not unloaded:
+        return False
 
-        if deco_coordinator is not None:
-            await deco_coordinator.async_close()
-        if clients_coordinator is not None:
-            await clients_coordinator.async_close()
+    syslog_forwarder = data.get(SYSLOG_FORWARDER_KEY)
+    if syslog_forwarder is not None:
+        await syslog_forwarder.async_stop()
 
-        # Logout from the Deco to free the admin session
-        if deco_coordinator is not None:
-            await deco_coordinator.api.async_logout()
+    for coordinator in (
+        deco_coordinator,
+        clients_coordinator,
+        mobile_coordinator,
+        wireless_coordinator,
+    ):
+        if coordinator is not None:
+            await coordinator.async_shutdown()
 
-        hass.data[DOMAIN].pop(config_entry.entry_id, None)
-        if not hass.data[DOMAIN]:
-            # Only remove the services when the last entry is unloaded.
-            hass.services.async_remove(DOMAIN, SERVICE_REBOOT_DECO)
-            hass.services.async_remove(DOMAIN, SERVICE_PAUSE_POLLING)
-            hass.services.async_remove(DOMAIN, SERVICE_RESUME_POLLING)
+    if deco_coordinator is not None:
+        await deco_coordinator.async_close()
+    if clients_coordinator is not None:
+        await clients_coordinator.async_close()
+    if deco_coordinator is not None:
+        await deco_coordinator.api.async_logout()
 
-    return unloaded
+    hass.data[DOMAIN].pop(config_entry.entry_id, None)
+    if not hass.data[DOMAIN]:
+        hass.services.async_remove(DOMAIN, SERVICE_REBOOT_DECO)
+        hass.services.async_remove(DOMAIN, SERVICE_PAUSE_POLLING)
+        hass.services.async_remove(DOMAIN, SERVICE_RESUME_POLLING)
+
+    return True
 
 
 async def update_listener(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
     """Update options."""
     _LOGGER.debug("update_listener: Reloading %s", config_entry.entry_id)
     await hass.config_entries.async_reload(config_entry.entry_id)
+
+
+async def async_remove_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+    """Delete stored state when an entry is deleted."""
+    await async_remove_syslog_store(hass, config_entry.entry_id)
 
 
 async def async_remove_config_entry_device(
