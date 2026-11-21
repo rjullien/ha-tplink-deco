@@ -350,10 +350,11 @@ class TplinkDecoOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             _ensure_user_input_optionals(user_input)
             _normalize_intervals(user_input)
-            connection_settings_changed = any(
-                user_input.get(key) != self.data.get(key) for key in CONNECTION_SETTINGS
-            )
             self.data.update(user_input)
+            connection_settings_changed = any(
+                self.data.get(key) != self.config_entry.data.get(key)
+                for key in CONNECTION_SETTINGS
+            )
 
             self._errors = _validate_intervals(self.data) | _validate_syslog(self.data)
             if connection_settings_changed and not self._errors:

@@ -167,6 +167,30 @@ async def test_correcting_invalid_interval_finishes_flow(kind):
 
 
 @pytest.mark.asyncio
+async def test_options_retests_changed_credentials_after_invalid_interval():
+    flow, _entry = _flow("options")
+    invalid = _data(5) | {CONF_PASSWORD: "new-password"}
+    valid = _data(30) | {CONF_PASSWORD: "new-password"}
+
+    with patch.object(
+        config_flow,
+        "_async_test_credentials",
+        AsyncMock(return_value={"base": "cannot_connect"}),
+    ) as check:
+        first_result = await flow.async_step_init(invalid)
+        check.assert_not_awaited()
+        second_result = await flow.async_step_init(valid)
+
+    assert first_result["errors"] == {
+        CONF_DEVICE_LIST_INTERVAL: "invalid_device_list_interval"
+    }
+    assert second_result["type"] == "form"
+    assert second_result["errors"] == {"base": "cannot_connect"}
+    check.assert_awaited_once()
+    flow.hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["user", "options"])
 async def test_interval_validation_does_not_hide_syslog_validation(kind):
     flow, _entry = _flow(kind)
