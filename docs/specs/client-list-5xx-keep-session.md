@@ -99,20 +99,23 @@ La première version prévoyait un `clear_auth()` après N cycles 100 % en 5xx. 
 
 ## 4. Cas limites
 
-| Cas                                                | Comportement attendu                                                                                          |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 1 à 3 satellites en 5xx, master OK (cas du 22/11)  | Session gardée, satellites dans `failed_deco_macs`, leurs clients gardent leur état (C1). 0 login.            |
-| Tous les nœuds en 5xx, repli global OK             | Session gardée, mode `global_fallback`, re-sonde par nœud à 300 s (B3). 0 login.                              |
-| Tous les nœuds + global en 5xx                     | Session gardée, backoff B3, état des clients conservé. 0 login.                                               |
-| 5xx sur `client_list` du master seul               | Session gardée (même règle). `device_list` du cycle Deco vérifie la session.                                  |
-| Session réellement expirée                         | Détectée par -5002 / 401 / 403 / réponse vide sur n'importe quel appel, ou 5xx sur `device_list`. Inchangé.   |
-| 5xx sur `device_list` / clés / login               | Inchangé : `clear_auth()` (A4 restreint).                                                                     |
-| Reboot du Deco                                     | Inchangé : A1, A2, A3, A7.                                                                                    |
-| Panne partielle longue (> 80 % des clients cachés) | Inchangé et hors périmètre : après 30 min la liste partielle est acceptée (liste suspecte, `coordinator.py`). |
+| Cas                                                                | Comportement attendu                                                                                          |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| 1 à 3 satellites en 5xx, master OK (cas du 22/11)                  | Session gardée, satellites dans `failed_deco_macs`, leurs clients gardent leur état (C1). 0 login.            |
+| Tous les nœuds en 5xx, repli global OK                             | Session gardée, mode `global_fallback`, re-sonde par nœud à 300 s (B3). 0 login.                              |
+| Tous les nœuds + global en 5xx                                     | Session gardée, backoff B3, état des clients conservé. 0 login.                                               |
+| 5xx sur `client_list` du master seul                               | Session gardée (même règle). `device_list` du cycle Deco vérifie la session.                                  |
+| Session réellement expirée                                         | Détectée par -5002 / 401 / 403 / réponse vide sur n'importe quel appel, ou 5xx sur `device_list`. Inchangé.   |
+| 5xx sur `device_list` / clés / login                               | Inchangé : `clear_auth()` (A4 restreint).                                                                     |
+| Reboot du Deco                                                     | Inchangé : A1, A2, A3, A7.                                                                                    |
+| Panne partielle longue (≥ 10 clients en ligne avant, < 20 % reçus) | Inchangé et hors périmètre : après 30 min la liste partielle est acceptée (liste suspecte, `coordinator.py`). |
 
 Limite acceptée : un firmware qui signalerait une session expirée **uniquement** par un 5xx sur
-`client_list`, tout en répondant normalement à `device_list`. Jamais observé ; dans ce cas le
-comportement serait celui d'une panne de relais (C1 + B3), sans faux « absent » immédiat.
+`client_list`. Jamais observé. Une session expirée signalée par -5002, 401/403 ou une réponse vide
+sur `client_list` reste détectée par ce même appel (A3, A4, A7). Avec `device_list_interval: 0`,
+`device_list` n'est plus interrogé après le démarrage : la vérification périodique décrite au §3 ne
+s'applique pas, seule cette détection par `client_list` reste. Dans le cas limite, le comportement
+serait celui d'une panne de relais (C1 + B3), sans faux « absent » immédiat.
 
 ## 5. Plan de test
 
