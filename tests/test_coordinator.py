@@ -639,7 +639,9 @@ async def test_per_node_5xx_cycle_does_not_relogin(api, mock_session, monkeypatc
         client = TpLinkDecoClient(client_mac)
         client.online = True
         client.deco_mac = deco_mac
-        client.last_activity = fixed_now
+        client.last_activity = (
+            fixed_now if index == 1 else fixed_now - timedelta(hours=1)
+        )
         old_clients[client_mac] = client
         old_client_macs.append(client_mac)
 
