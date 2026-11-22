@@ -1,6 +1,6 @@
 # Spec — Garder la session sur un 5xx de `client_list`
 
-- **Statut :** proposition (spec seule, aucun changement de code dans cette PR)
+- **Statut :** implémentée dans cette PR (`api.py` `_async_post`, tests, A4 de `FORK-SAFEGUARDS.md`)
 - **Date :** 2026-11-22 (révisée le même jour après analyse des logs et de l'historique HA)
 - **Composants :** `custom_components/tplink_deco/api.py`, `tests/`, `docs/FORK-SAFEGUARDS.md`
 - **Garde-fous concernés :** [FORK-SAFEGUARDS](../FORK-SAFEGUARDS.md) A (anti-churn), A4, B3, C1
@@ -122,17 +122,20 @@ serait celui d'une panne de relais (C1 + B3), sans faux « absent » immédiat.
 Nouveaux tests (style `tests/test_api_client.py`, `tests/test_api_transport_errors.py`,
 `tests/test_coordinator.py`) :
 
-1. `test_client_list_5xx_keeps_auth` : `_async_post` avec `params={"form": "client_list"}` et
-   502 → `ClientResponseError` levée, `_stok` et cookie **conservés**, un log `warning`
-   `keeping session`.
+1. `test_client_list_http_500_keeps_auth_session` et
+   `test_consecutive_client_list_502_do_not_relogin` : `_async_post` avec
+   `params={"form": "client_list"}` et 5xx → `ClientResponseError` levée, `_stok` et cookie
+   **conservés**, un log `warning` `keeping session` ; deux appels satellite successifs ne
+   déclenchent pas de re-login.
 2. `test_per_node_5xx_cycle_does_not_relogin` : master OK + 3 satellites en 502 → **0** login
    pendant le cycle ; les clients des 3 satellites gardent leur état.
-3. Non-régression A4 restreint : `test_async_post_502_clears_auth` (endpoint hors `client_list`,
-   inchangé) et `test_async_post_403_clears_auth` restent verts.
+3. Non-régression A4 restreint : `test_device_list_http_502_clears_auth`,
+   `test_async_post_502_clears_auth` (endpoint hors `client_list`, inchangé) et
+   `test_async_post_403_clears_auth` restent verts.
 
-Test existant à adapter : `test_authenticated_http_500_clears_auth_session` vise `client_list` ;
-le renommer `test_authenticated_client_list_http_500_keeps_auth_session`, inverser l'assertion
-sur la session et garder la vérification que les logs ne contiennent ni `stok` ni `sysauth`.
+Test existant adapté : `test_authenticated_http_500_clears_auth_session` visait `client_list` ;
+il a été renommé `test_client_list_http_500_keeps_auth_session`, l'assertion sur la session a
+été inversée et la vérification que les logs ne contiennent ni `stok` ni `sysauth` est conservée.
 
 Dans la **même PR** que le code (règle `AGENTS.md`) :
 
