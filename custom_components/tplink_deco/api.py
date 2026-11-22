@@ -981,6 +981,12 @@ class TplinkDecoApi:
                     f"{context} Forbidden error: HTTP {err.status} ({err.message})"
                 )
                 raise ForbiddenException(message) from err
+            if err.status >= 500 and is_client_list:
+                # Satellite 502: the master failed to relay, the session is still valid.
+                _LOGGER.warning(
+                    "%s server error %s, keeping session", context, err.status
+                )
+                raise err
             if err.status >= 500:
                 # Server error (502 Bad Gateway, etc.) — clear auth and retry
                 self.clear_auth()

@@ -619,6 +619,100 @@ async def test_client_coordinator_5xx_all_nodes_fallback(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_per_node_5xx_cycle_does_not_relogin(api, mock_session, monkeypatch):
+    master_mac = "AA:BB:CC:DD:EE:01"
+    satellite_macs = [
+        "AA:BB:CC:DD:EE:02",
+        "AA:BB:CC:DD:EE:03",
+        "AA:BB:CC:DD:EE:04",
+    ]
+    fixed_now = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        "custom_components.tplink_deco.coordinator.dt_util.utcnow",
+        lambda: fixed_now,
+    )
+
+    old_clients = {}
+    old_client_macs = []
+    for index, deco_mac in enumerate([master_mac, *satellite_macs], start=1):
+        client_mac = f"11:22:33:44:55:{index:02X}"
+        client = TpLinkDecoClient(client_mac)
+        client.online = True
+        client.deco_mac = deco_mac
+        client.last_activity = (
+            fixed_now if index == 1 else fixed_now - timedelta(hours=1)
+        )
+        old_clients[client_mac] = client
+        old_client_macs.append(client_mac)
+
+    coordinator, master = _make_client_coordinator(api, old_clients)
+    decos = {master.mac: master}
+    decos.update({mac: TpLinkDeco(mac) for mac in satellite_macs})
+    coordinator._deco_update_coordinator.data = TpLinkDecoData(
+        master_deco=master,
+        decos=decos,
+    )
+
+    api._stok = "token"
+    api._cookie = "sysauth=abc"
+    api._seq = 1
+    api._encode_payload = MagicMock(return_value="payload")
+    api._decrypt_data = MagicMock(
+        return_value={
+            "error_code": 0,
+            "result": {
+                "client_list": [
+                    {
+                        "mac": old_client_macs[0],
+                        "name": "VXBkYXRlZCBtYXN0ZXI=",
+                        "ip": "192.168.1.10",
+                    },
+                    {
+                        "mac": "11:22:33:44:55:99",
+                        "name": "RnJlc2ggbWFzdGVy",
+                        "ip": "192.168.1.11",
+                    },
+                ]
+            },
+        }
+    )
+
+    master_response = MagicMock()
+    master_response.status = 200
+    master_response.history = ()
+    master_response.headers.getall.return_value = []
+    master_response.json = AsyncMock(
+        return_value={"error_code": 0, "data": "encrypted"}
+    )
+
+    satellite_response = MagicMock()
+    satellite_response.raise_for_status.side_effect = aiohttp.ClientResponseError(
+        request_info=MagicMock(),
+        history=(),
+        status=502,
+        message="Bad Gateway",
+    )
+    mock_session.post.side_effect = [
+        master_response,
+        satellite_response,
+        satellite_response,
+        satellite_response,
+    ]
+
+    data = await coordinator._async_update_data()
+
+    assert mock_session.post.call_count == 4
+    assert api._stok == "token"
+    assert api._cookie == "sysauth=abc"
+    assert api._seq == 1
+    assert data[old_client_macs[0]].name == "Updated master"
+    assert data["11:22:33:44:55:99"].name == "Fresh master"
+    assert data["11:22:33:44:55:99"].deco_mac == master.mac
+    for client_mac in old_client_macs[1:]:
+        assert data[client_mac].online is True
+
+
+@pytest.mark.asyncio
 async def test_client_coordinator_partial_node_failure_keeps_mapping(monkeypatch):
     """A single node 5xx must not force global fallback or wipe peer clients."""
     hass = _make_hass()
