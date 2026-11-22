@@ -138,6 +138,10 @@ startup-only mode can mitigate this firmware behavior.
 >
 > **HACS depuis v3.14.x :** `3.10.2.x` est numériquement inférieur à `3.14.1` — HACS ne proposera pas la mise à jour automatiquement. Utiliser **Redownload** / **Reinstall** sur le dépôt `rjullien/ha-tplink-deco`.
 
+### v3.15.2.2
+
+- Keep the Deco session when `client_list` returns HTTP 5xx: a satellite 502 means the master failed to relay, not that the session expired. Avoids useless re-logins on the master (incident 2026-11-22). Other 5xx, 401/403, -5002 and empty responses still re-login. Fork safeguard A4 updated.
+
 ### v3.15.2.1
 
 Fork fixes to the upstream v3.15.2 code:
