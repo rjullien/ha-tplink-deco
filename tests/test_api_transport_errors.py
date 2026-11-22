@@ -515,8 +515,8 @@ async def test_outer_top_level_5002_relogs_in_once(api, mock_session):
 
 
 @pytest.mark.asyncio
-async def test_authenticated_http_500_clears_auth_session(api, mock_session, caplog):
-    """Test that HTTP 500 clears auth while logging without session secrets."""
+async def test_client_list_http_500_keeps_auth_session(api, mock_session, caplog):
+    """Test that HTTP 500 on client_list keeps auth while logging safely."""
     _authenticate(api)
     saved_stok = api._stok
     saved_cookie = api._cookie
@@ -544,10 +544,58 @@ async def test_authenticated_http_500_clears_auth_session(api, mock_session, cap
             data="payload",
         )
 
-    assert api._stok is None
-    assert api._cookie is None
-    assert api._seq is None
+    _assert_authenticated(api)
     assert "HTTP 500 (Internal Server Error)" in caplog.text
+    assert any(
+        record.levelno == logging.WARNING and "keeping session" in record.message
+        for record in caplog.records
+    )
     assert saved_stok not in caplog.text
     assert saved_cookie not in caplog.text
     assert ";stok=" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_consecutive_client_list_502_do_not_relogin(api, mock_session):
+    _authenticate(api)
+    api._encode_payload = MagicMock(return_value="payload")
+    response = _response({})
+    response.status = 502
+    response.raise_for_status.side_effect = aiohttp.ClientResponseError(
+        request_info=MagicMock(),
+        history=(),
+        status=502,
+        message="Bad Gateway",
+    )
+    mock_session.post.return_value = response
+
+    for deco_mac in ("28-87-BA-B2-8C-58", "28-87-BA-B2-8C-00"):
+        with pytest.raises(aiohttp.ClientResponseError):
+            await api.async_list_clients(deco_mac)
+
+    assert mock_session.post.call_count == 2
+    _assert_authenticated(api)
+
+
+@pytest.mark.asyncio
+async def test_device_list_http_502_clears_auth(api, mock_session):
+    _authenticate(api)
+    response = _response({})
+    response.status = 502
+    response.raise_for_status.side_effect = aiohttp.ClientResponseError(
+        request_info=MagicMock(),
+        history=(),
+        status=502,
+        message="Bad Gateway",
+    )
+    mock_session.post.return_value = response
+
+    with pytest.raises(aiohttp.ClientResponseError):
+        await api._async_post(
+            "List Devices",
+            f"{api._host}/cgi-bin/luci/;stok={api._stok}/admin/device",
+            params={"form": "device_list"},
+            data="payload",
+        )
+
+    assert api._stok is None
